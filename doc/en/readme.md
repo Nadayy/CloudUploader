@@ -37,6 +37,8 @@ Files are uploaded anonymously to whichever host you pick:
 
 **In short:** stick to reasonable, legal content and reasonable file sizes, and don't rely on any of these hosts for anything sensitive, permanent, or high-volume. If a host blocks your IP for a terms violation, that block is enforced by the host itself — this add-on has no way to appeal it or work around it for you.
 
+A short summary of this notice is shown, in a dialog, the first time NVDA starts after installing or updating this add-on. You must check "I have read and understand the above" before Agree becomes available. Choosing Disagree, or dismissing the dialog with Escape, does not record acceptance, so it will be shown again the next time NVDA starts. Agreeing records acceptance for this version of the notice; if the notice is meaningfully updated in a future version, it will be shown again even to people who already agreed.
+
 ## Settings
 
 Available under NVDA+control+g → Cloud Uploader: a default host, auto-copy on upload, history size, and recording options (format, quality, device, channels, auto-start recording, ffmpeg path).

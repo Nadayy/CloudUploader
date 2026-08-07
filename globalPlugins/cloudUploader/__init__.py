@@ -60,6 +60,24 @@ UPLOAD_HOST = "litterbox.catbox.moe"
 UPLOAD_PATH = "/resources/internals/api.php"
 HISTORY_MAX_ENTRIES_DEFAULT = 50
 
+# Bump this whenever the wording below changes meaningfully, so returning
+# users are shown the notice again instead of only brand-new installs.
+TERMS_VERSION = "1"
+
+TERMS_TEXT = _(
+	"Cloud Uploader sends files to free, independently-operated third-party "
+	"hosts (Litterbox, Catbox, Gofile, 0x0.st, Filebin, and Uguu), not a "
+	"service run by this add-on. Each host has its own file size limits, "
+	"content rules, and retention time, and violating a host's rules can get "
+	"your uploads deleted and your IP address blocked from that host.\n\n"
+	"In short: only upload content you have the right to share, that is "
+	"legal, and that is reasonably sized. Do not rely on any of these hosts "
+	"for anything sensitive, permanent, or high-volume.\n\n"
+	"Full details for each host, including exact size limits and banned "
+	"content, are in this add-on's documentation (NVDA menu > Help > "
+	"Add-on Help, or the readme in the add-on's folder)."
+)
+
 confspec = {
 	"defaultHost": "string(default='ask')",
 	"autoCopyOnComplete": "boolean(default=false)",
@@ -79,6 +97,7 @@ confspec = {
 	"saveSeparateTracks": "boolean(default=false)",
 	"micGainDb": "float(default=0.0, min=-20.0, max=20.0)",
 	"systemGainDb": "float(default=0.0, min=-20.0, max=20.0)",
+	"termsAcceptedVersion": "string(default='')",
 }
 config.conf.spec["cloudUploader"] = confspec
 
@@ -4573,6 +4592,73 @@ class CloudUploaderSettingsPanel(gui.settingsDialogs.SettingsPanel):
 		config.conf["cloudUploader"]["fileUploadOnly"] = self.fileUploadOnlyCheckbox.GetValue()
 
 
+class TermsDialog(wx.Dialog):
+	"""One-time (per terms version) notice about third-party upload hosts.
+
+	Requires the person to check an "I understand" box before Agree becomes
+	available. Disagreeing, or dismissing with Escape, closes the dialog
+	without recording acceptance, so it is shown again on the next NVDA
+	startup.
+	"""
+
+	def __init__(self, parent):
+		super().__init__(
+			parent,
+			title=_("Cloud Uploader: upload hosts and terms of service"),
+		)
+		mainSizer = wx.BoxSizer(wx.VERTICAL)
+		helper = gui.guiHelper.BoxSizerHelper(self, sizer=mainSizer)
+
+		text = helper.addItem(
+			wx.TextCtrl(
+				self,
+				value=TERMS_TEXT,
+				style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_BESTWRAP,
+				size=(500, 250),
+			)
+		)
+		text.SetFocus()
+
+		self.understandCheckbox = helper.addItem(
+			wx.CheckBox(
+				self,
+				label=_("I have read and understand the above"),
+			)
+		)
+		self.understandCheckbox.Bind(wx.EVT_CHECKBOX, self.onCheckboxToggled)
+
+		buttonHelper = gui.guiHelper.ButtonHelper(wx.HORIZONTAL)
+		self.agreeButton = buttonHelper.addButton(self, label=_("&Agree"))
+		self.agreeButton.Bind(wx.EVT_BUTTON, self.onAgree)
+		self.agreeButton.Disable()
+		self.disagreeButton = buttonHelper.addButton(self, label=_("&Disagree"))
+		self.disagreeButton.Bind(wx.EVT_BUTTON, self.onDisagree)
+		helper.addDialogDismissButtons(buttonHelper)
+
+		self.Bind(wx.EVT_CLOSE, self.onClose)
+
+		mainSizer.Fit(self)
+		self.Sizer = mainSizer
+		self.CentreOnScreen()
+
+	def onCheckboxToggled(self, evt):
+		self.agreeButton.Enable(self.understandCheckbox.GetValue())
+
+	def onAgree(self, evt):
+		if not self.understandCheckbox.GetValue():
+			return
+		config.conf["cloudUploader"]["termsAcceptedVersion"] = TERMS_VERSION
+		self.EndModal(wx.ID_OK)
+
+	def onDisagree(self, evt):
+		# Do not record acceptance; the dialog will be shown again next startup.
+		self.EndModal(wx.ID_CANCEL)
+
+	def onClose(self, evt):
+		# Escape / window close: same as Disagree, do not record acceptance.
+		self.EndModal(wx.ID_CANCEL)
+
+
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	scriptCategory = _("Cloud Uploader")
 
@@ -4608,6 +4694,23 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._bgPollScheduled = False
 		_pruneOldRecordings()
 		gui.NVDASettingsDialog.categoryClasses.append(CloudUploaderSettingsPanel)
+		if config.conf["cloudUploader"]["termsAcceptedVersion"] != TERMS_VERSION:
+			core.postNvdaStartup.register(self._showTermsIfNeeded)
+
+	def _showTermsIfNeeded(self):
+		core.postNvdaStartup.unregister(self._showTermsIfNeeded)
+		if config.conf["cloudUploader"]["termsAcceptedVersion"] != TERMS_VERSION:
+			wx.CallAfter(self._showTermsDialog)
+
+	def _showTermsDialog(self):
+		try:
+			gui.mainFrame.prePopup()
+			dlg = TermsDialog(gui.mainFrame)
+			dlg.ShowModal()
+			dlg.Destroy()
+			gui.mainFrame.postPopup()
+		except Exception:
+			log.error("Cloud Uploader: could not show terms dialog", exc_info=True)
 
 	def terminate(self):
 		try:
