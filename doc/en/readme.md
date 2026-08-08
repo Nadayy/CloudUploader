@@ -4,13 +4,20 @@ Upload any file to the cloud and share a download link, entirely from the keyboa
 
 ## Usage
 
-- **NVDA+alt+o**: choose a file from disk, or record a new clip (microphone, computer audio, or both), then pick an upload host and expiry.
-- **NVDA+alt+l**: browse your upload history. Enter opens Copy/Open/Delete options; Control+C copies the link directly; Delete removes an entry. Expired links drop off the list automatically.
-- **NVDA+shift+c**: start a background recording with no window (uses your default source and devices). Press again to stop and open the usual record dialog to preview, edit, and upload.
+Everything starts from one shortcut: **NVDA+alt+o**. It opens a menu with:
+
+- **&Upload a file** — choose a file from disk, then pick an upload host and expiry.
+- **&Record and upload** — record a new clip (microphone, computer audio, or both), then pick an upload host and expiry.
+- **&Background recording** — starts a headless recording with no window (uses your default source and devices). Press NVDA+alt+o again (no need to open the menu) to stop it and open the usual record dialog to preview, edit, and upload.
+- **&History** — browse your upload history. Enter opens Copy/Open/Delete options; Control+C copies the link directly; Delete removes an entry. Expired links drop off the list automatically.
+
+Each menu item's underlined letter (U, R, B, H) can be pressed directly once the menu is open, the same as any other Windows menu. Escape closes the menu without doing anything.
+
+Only one shortcut is assigned by default, to avoid clashing with NVDA's own commands or other add-ons. If you'd like separate shortcuts for history or background recording again, they can be assigned individually from NVDA's Input Gestures dialog (NVDA+N → Preferences → Input gestures → Cloud Uploader) — the underlying commands are still there, just unbound by default.
 
 ### Recording
 
-The record dialog lets you capture the microphone, computer audio, or both together, with Preview, Undo/Redo, silence removal, noise reduction, volume normalizing, and (with both sources) separate volume sliders. Recordings are encoded to MP3, WAV, or FLAC (via ffmpeg) before upload, based on your Settings. Use NVDA+shift+c for a headless start/stop toggle that ends in the same dialog.
+The record dialog lets you capture the microphone, computer audio, or both together, with Preview, Undo/Redo, silence removal, noise reduction, volume normalizing, and (with both sources) separate volume sliders. Recordings are encoded to MP3, WAV, or FLAC (via ffmpeg) before upload, based on your Settings.
 
 ## Upload hosts
 
@@ -37,7 +44,7 @@ Files are uploaded anonymously to whichever host you pick:
 
 **In short:** stick to reasonable, legal content and reasonable file sizes, and don't rely on any of these hosts for anything sensitive, permanent, or high-volume. If a host blocks your IP for a terms violation, that block is enforced by the host itself — this add-on has no way to appeal it or work around it for you.
 
-A short summary of this notice is shown, in a dialog, the first time NVDA starts after installing or updating this add-on. You must check "I have read and understand the above" before Agree becomes available. Choosing Disagree, or dismissing the dialog with Escape, does not record acceptance, so it will be shown again the next time NVDA starts. Agreeing records acceptance for this version of the notice; if the notice is meaningfully updated in a future version, it will be shown again even to people who already agreed.
+A short summary of this notice is shown, in a dialog, the first time NVDA starts after installing or updating this add-on. You must check "I have read and understand the above" before Agree becomes available. Choosing Disagree, or dismissing the dialog with Escape, does not record acceptance, so it will be shown again the next time NVDA starts. Agreeing records acceptance for the version of the add-on you're running; if you later update to a newer version, it will be shown again, even if you already agreed to an earlier version.
 
 ## Settings
 
@@ -46,9 +53,15 @@ Available under NVDA+control+g → Cloud Uploader: a default host, auto-copy on 
 ## Notes
 
 - Only one upload runs at a time.
+- Uploading, viewing history, and background recording are all disabled until you've agreed to the terms of service notice above. If you dismiss it without agreeing, restart NVDA to see it again.
+- All shortcuts can be reassigned from NVDA's Input Gestures dialog (NVDA+N → Preferences → Input gestures → Cloud Uploader).
 
 ## Support
 
 If Cloud Uploader has been useful to you, a "Donate to support development"
 button is available in Settings, or you can go directly to
 [ko-fi.com/naday](https://ko-fi.com/naday).
+
+## Contact
+
+Questions, bug reports, or feature requests: dianarl0206@gmail.com

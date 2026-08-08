@@ -60,10 +60,6 @@ UPLOAD_HOST = "litterbox.catbox.moe"
 UPLOAD_PATH = "/resources/internals/api.php"
 HISTORY_MAX_ENTRIES_DEFAULT = 50
 
-# Bump this whenever the wording below changes meaningfully, so returning
-# users are shown the notice again instead of only brand-new installs.
-TERMS_VERSION = "1"
-
 TERMS_TEXT = _(
 	"Cloud Uploader sends files to free, independently-operated third-party "
 	"hosts (Litterbox, Catbox, Gofile, 0x0.st, Filebin, and Uguu), not a "
@@ -3354,13 +3350,13 @@ class RecordVoiceDialog(wx.Dialog):
 		if self._autoStart:
 			wx.CallAfter(self._startRecording)
 		elif self._preload is not None:
-			# Background (NVDA+shift+c) recording already captured; load it
+			# Background (headless) recording already captured; load it
 			# once the dialog is on screen so controls enable correctly.
 			wx.CallAfter(self._applyPreload, self._preload)
 
 	def _applyPreload(self, preload):
 		"""Applies a recording that was captured outside this dialog (e.g.
-		via the headless NVDA+shift+c toggle) so the usual post-record
+		via the headless background recording toggle) so the usual post-record
 		controls are available immediately."""
 		try:
 			sourceMode = preload.get("sourceMode") or "mic"
@@ -4505,7 +4501,7 @@ class CloudUploaderSettingsPanel(gui.settingsDialogs.SettingsPanel):
 			wx.CheckBox(
 				self,
 				label=_(
-					"Hide voice recording; NVDA+alt+o always goes straight to choosing a file to upload"
+					"Hide voice recording; the NVDA+alt+o menu will not offer a Record option"
 				),
 			)
 		)
@@ -4601,11 +4597,12 @@ class TermsDialog(wx.Dialog):
 	startup.
 	"""
 
-	def __init__(self, parent):
+	def __init__(self, parent, termsVersion):
 		super().__init__(
 			parent,
 			title=_("Cloud Uploader: upload hosts and terms of service"),
 		)
+		self._termsVersion = termsVersion
 		mainSizer = wx.BoxSizer(wx.VERTICAL)
 		helper = gui.guiHelper.BoxSizerHelper(self, sizer=mainSizer)
 
@@ -4647,7 +4644,7 @@ class TermsDialog(wx.Dialog):
 	def onAgree(self, evt):
 		if not self.understandCheckbox.GetValue():
 			return
-		config.conf["cloudUploader"]["termsAcceptedVersion"] = TERMS_VERSION
+		config.conf["cloudUploader"]["termsAcceptedVersion"] = self._termsVersion
 		self.EndModal(wx.ID_OK)
 
 	def onDisagree(self, evt):
@@ -4679,7 +4676,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._historyDialog = None
 		self._pendingUploadPaths = []
 		self._deleteAfterUploadFlag = False
-		# Headless background recording (NVDA+shift+c) — independent of NVDA+alt+o.
+		# Headless background recording, reachable via the NVDA+alt+o menu
+		# (or a manually-assigned shortcut for script_toggleBackgroundRecord).
 		self._bgRecording = False
 		self._bgProcessing = False
 		self._bgMicRecorder = None
@@ -4694,18 +4692,29 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._bgPollScheduled = False
 		_pruneOldRecordings()
 		gui.NVDASettingsDialog.categoryClasses.append(CloudUploaderSettingsPanel)
-		if config.conf["cloudUploader"]["termsAcceptedVersion"] != TERMS_VERSION:
+		try:
+			self._termsVersion = addonHandler.getCodeAddon().manifest["version"]
+		except Exception:
+			log.error("Cloud Uploader: could not read own add-on version", exc_info=True)
+			self._termsVersion = None
+		if self._termsVersion is not None and config.conf["cloudUploader"]["termsAcceptedVersion"] != self._termsVersion:
 			core.postNvdaStartup.register(self._showTermsIfNeeded)
+
+	def _termsAccepted(self):
+		if self._termsVersion is None:
+			# Couldn't determine our own version; don't block usage over that.
+			return True
+		return config.conf["cloudUploader"]["termsAcceptedVersion"] == self._termsVersion
 
 	def _showTermsIfNeeded(self):
 		core.postNvdaStartup.unregister(self._showTermsIfNeeded)
-		if config.conf["cloudUploader"]["termsAcceptedVersion"] != TERMS_VERSION:
+		if not self._termsAccepted():
 			wx.CallAfter(self._showTermsDialog)
 
 	def _showTermsDialog(self):
 		try:
 			gui.mainFrame.prePopup()
-			dlg = TermsDialog(gui.mainFrame)
+			dlg = TermsDialog(gui.mainFrame, self._termsVersion)
 			dlg.ShowModal()
 			dlg.Destroy()
 			gui.mainFrame.postPopup()
@@ -4738,25 +4747,92 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			pass
 
 	def script_uploadFile(self, gesture):
+		if not self._termsAccepted():
+			ui.message(_("Please accept the Cloud Uploader terms of service first. Restart NVDA to see the notice again."))
+			return
+		if self._bgRecording:
+			if self._bgProcessing:
+				ui.message(_("Still processing the previous recording, please wait"))
+				return
+			self._stopBackgroundRecording()
+			return
+		if self._bgProcessing:
+			ui.message(_("Still processing the previous recording, please wait"))
+			return
 		if self._uploading:
 			ui.message(_("An upload is already in progress"))
 			return
-		if self._bgRecording or self._bgProcessing:
-			ui.message(_("A background recording is in progress. Press NVDA+shift+c to stop it first."))
+		if self._selectionDialog is not None:
+			self._focusExistingDialog(self._selectionDialog)
+			ui.message(_("A Cloud Uploader dialog is already open"))
+			return
+		if self._historyDialog is not None:
+			self._focusExistingDialog(self._historyDialog)
+			ui.message(_("The upload history window is already open"))
+			return
+		wx.CallAfter(self._showMainMenu)
+	script_uploadFile.__doc__ = _(
+		"Open the Cloud Uploader menu: upload a file, record and upload, start "
+		"background recording, or view upload history. If a background "
+		"recording is already running, pressing this again stops it."
+	)
+
+	def _showMainMenu(self):
+		gui.mainFrame.prePopup()
+		try:
+			menu = wx.Menu()
+			uploadItem = menu.Append(wx.ID_ANY, _("&Upload a file"))
+			gui.mainFrame.Bind(wx.EVT_MENU, lambda evt: self._onMenuUpload(), uploadItem)
+
+			recordItem = None
+			if not config.conf["cloudUploader"]["fileUploadOnly"]:
+				recordItem = menu.Append(wx.ID_ANY, _("&Record and upload"))
+				gui.mainFrame.Bind(wx.EVT_MENU, lambda evt: self._onMenuRecord(), recordItem)
+
+			bgItem = menu.Append(wx.ID_ANY, _("&Background recording"))
+			gui.mainFrame.Bind(wx.EVT_MENU, lambda evt: self._onMenuBackground(), bgItem)
+
+			historyItem = menu.Append(wx.ID_ANY, _("&History"))
+			gui.mainFrame.Bind(wx.EVT_MENU, lambda evt: self._onMenuHistory(), historyItem)
+
+			gui.mainFrame.PopupMenu(menu)
+			menu.Destroy()
+		finally:
+			gui.mainFrame.postPopup()
+
+	def _onMenuUpload(self):
+		wx.CallAfter(self._showFileDialog)
+
+	def _onMenuRecord(self):
+		wx.CallAfter(self._showRecordDialog)
+
+	def _onMenuHistory(self):
+		wx.CallAfter(self._showLinkHistory)
+
+	def _onMenuBackground(self):
+		if self._bgProcessing:
+			ui.message(_("Still processing the previous recording, please wait"))
+			return
+		if self._bgRecording:
+			self._stopBackgroundRecording()
+			return
+		if self._uploading:
+			ui.message(_("An upload is already in progress"))
 			return
 		if self._selectionDialog is not None:
 			self._focusExistingDialog(self._selectionDialog)
-			ui.message(_("A file selection dialog is already open"))
+			ui.message(_("A Cloud Uploader dialog is already open"))
 			return
-		if config.conf["cloudUploader"]["fileUploadOnly"]:
-			wx.CallAfter(self._showFileDialog)
-		else:
-			wx.CallAfter(self._showSourceChoice)
-	script_uploadFile.__doc__ = _(
-		"Choose a file or record a voice clip, then upload it to the cloud and get a shareable direct download link"
-	)
+		try:
+			self._startBackgroundRecording()
+		except Exception as e:
+			log.error("Cloud Uploader: background recording failed: %s" % e, exc_info=True)
+			ui.message(_("Cloud Uploader recording failed: {error}").format(error=e))
 
 	def script_showLinkHistory(self, gesture):
+		if not self._termsAccepted():
+			ui.message(_("Please accept the Cloud Uploader terms of service first. Restart NVDA to see the notice again."))
+			return
 		if self._historyDialog is not None:
 			self._focusExistingDialog(self._historyDialog)
 			ui.message(_("The upload history window is already open"))
@@ -4768,8 +4844,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		"""Start or stop a headless recording. First press starts capture with
 		no window (using your default source and devices). Second press stops
 		and opens the usual record dialog so you can preview, edit, and upload.
-		This is independent of NVDA+alt+o."""
+		Not bound to a key by default — the same action is available from the
+		NVDA+alt+o menu ("Background recording"). This script exists so it can
+		still be assigned its own shortcut manually, via Input Gestures, if
+		wanted."""
 		try:
+			if not self._termsAccepted():
+				ui.message(_("Please accept the Cloud Uploader terms of service first. Restart NVDA to see the notice again."))
+				return
 			if self._bgProcessing:
 				ui.message(_("Still processing the previous recording, please wait"))
 				return
@@ -4785,11 +4867,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				return
 			self._startBackgroundRecording()
 		except Exception as e:
-			log.error("Cloud Uploader: NVDA+shift+c failed: %s" % e, exc_info=True)
+			log.error("Cloud Uploader: background recording toggle failed: %s" % e, exc_info=True)
 			ui.message(_("Cloud Uploader recording failed: {error}").format(error=e))
 	script_toggleBackgroundRecord.__doc__ = _(
 		"Start or stop background voice recording. First press starts recording with no window; "
-		"second press stops and opens the record dialog"
+		"second press stops and opens the record dialog. Unassigned by default; the same action "
+		"is also available from the NVDA+alt+o menu."
 	)
 
 	def _scheduleBgPoll(self):
@@ -4935,13 +5018,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._scheduleBgPoll()
 
 		if usedFallbackMicDevice and usedFallbackSystemDevice:
-			ui.message(_("Background recording started using system default devices. Press NVDA+shift+c again to stop."))
+			ui.message(_("Background recording started using system default devices. Press NVDA+alt+o again to stop."))
 		elif usedFallbackMicDevice:
-			ui.message(_("Background recording started (default microphone). Press NVDA+shift+c again to stop."))
+			ui.message(_("Background recording started (default microphone). Press NVDA+alt+o again to stop."))
 		elif usedFallbackSystemDevice:
-			ui.message(_("Background recording started (default computer audio device). Press NVDA+shift+c again to stop."))
+			ui.message(_("Background recording started (default computer audio device). Press NVDA+alt+o again to stop."))
 		else:
-			ui.message(_("Background recording started. Press NVDA+shift+c again to stop."))
+			ui.message(_("Background recording started. Press NVDA+alt+o again to stop."))
 
 	def _stopBackgroundRecording(self):
 		if not self._bgRecording:
@@ -5416,6 +5499,4 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	__gestures = {
 		"kb:NVDA+alt+o": "uploadFile",
-		"kb:NVDA+alt+l": "showLinkHistory",
-		"kb:NVDA+shift+c": "toggleBackgroundRecord",
 	}
