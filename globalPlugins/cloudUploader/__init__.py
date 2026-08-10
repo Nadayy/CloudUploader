@@ -85,8 +85,10 @@ confspec = {
 	"systemDeviceId": "string(default='')",
 	"silenceSensitivity": "string(default='medium')",
 	"noiseReductionSensitivity": "string(default='medium')",
-	"fileUploadOnly": "boolean(default=false)",
 	"autoStartRecording": "boolean(default=false)",
+	"showRecordInMenu": "boolean(default=true)",
+	"showBackgroundInMenu": "boolean(default=true)",
+	"showHistoryInMenu": "boolean(default=true)",
 	"recordingFormat": "string(default='mp3')",
 	"audioQuality": "string(default='high')",
 	"recordSourceMode": "string(default='mic')",
@@ -4497,15 +4499,23 @@ class CloudUploaderSettingsPanel(gui.settingsDialogs.SettingsPanel):
 		)
 		self.autoStartRecordingCheckbox.SetValue(config.conf["cloudUploader"]["autoStartRecording"])
 
-		self.fileUploadOnlyCheckbox = helper.addItem(
-			wx.CheckBox(
-				self,
-				label=_(
-					"Hide voice recording; the NVDA+alt+o menu will not offer a Record option"
-				),
-			)
+		# --- NVDA+alt+o menu ---
+		_addSectionHeader(helper, self, _("NVDA+alt+o menu"))
+
+		self.showRecordInMenuCheckbox = helper.addItem(
+			wx.CheckBox(self, label=_("Show \"Record\" in the NVDA+alt+o menu"))
 		)
-		self.fileUploadOnlyCheckbox.SetValue(config.conf["cloudUploader"]["fileUploadOnly"])
+		self.showRecordInMenuCheckbox.SetValue(config.conf["cloudUploader"]["showRecordInMenu"])
+
+		self.showBackgroundInMenuCheckbox = helper.addItem(
+			wx.CheckBox(self, label=_("Show \"Background recording\" in the NVDA+alt+o menu"))
+		)
+		self.showBackgroundInMenuCheckbox.SetValue(config.conf["cloudUploader"]["showBackgroundInMenu"])
+
+		self.showHistoryInMenuCheckbox = helper.addItem(
+			wx.CheckBox(self, label=_("Show \"History\" in the NVDA+alt+o menu"))
+		)
+		self.showHistoryInMenuCheckbox.SetValue(config.conf["cloudUploader"]["showHistoryInMenu"])
 
 		# --- Recordings stored on this device ---
 		_addSectionHeader(helper, self, _("Recordings stored on this device"))
@@ -4585,7 +4595,9 @@ class CloudUploaderSettingsPanel(gui.settingsDialogs.SettingsPanel):
 		config.conf["cloudUploader"]["micGainDb"] = float(self.micGainSlider.GetValue())
 		config.conf["cloudUploader"]["systemGainDb"] = float(self.systemGainSlider.GetValue())
 		config.conf["cloudUploader"]["autoStartRecording"] = self.autoStartRecordingCheckbox.GetValue()
-		config.conf["cloudUploader"]["fileUploadOnly"] = self.fileUploadOnlyCheckbox.GetValue()
+		config.conf["cloudUploader"]["showRecordInMenu"] = self.showRecordInMenuCheckbox.GetValue()
+		config.conf["cloudUploader"]["showBackgroundInMenu"] = self.showBackgroundInMenuCheckbox.GetValue()
+		config.conf["cloudUploader"]["showHistoryInMenu"] = self.showHistoryInMenuCheckbox.GetValue()
 
 
 class TermsDialog(wx.Dialog):
@@ -4770,11 +4782,21 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._focusExistingDialog(self._historyDialog)
 			ui.message(_("The upload history window is already open"))
 			return
+		if not (
+			config.conf["cloudUploader"]["showRecordInMenu"]
+			or config.conf["cloudUploader"]["showBackgroundInMenu"]
+			or config.conf["cloudUploader"]["showHistoryInMenu"]
+		):
+			# Only "Upload a file" would remain; skip the menu and go straight there.
+			wx.CallAfter(self._showFileDialog)
+			return
 		wx.CallAfter(self._showMainMenu)
 	script_uploadFile.__doc__ = _(
 		"Open the Cloud Uploader menu: upload a file, record and upload, start "
 		"background recording, or view upload history. If a background "
-		"recording is already running, pressing this again stops it."
+		"recording is already running, pressing this again stops it. If every "
+		"other menu item is hidden in Settings, this goes straight to choosing "
+		"a file instead of opening a one-item menu."
 	)
 
 	def _showMainMenu(self):
@@ -4784,16 +4806,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			uploadItem = menu.Append(wx.ID_ANY, _("&Upload a file"))
 			gui.mainFrame.Bind(wx.EVT_MENU, lambda evt: self._onMenuUpload(), uploadItem)
 
-			recordItem = None
-			if not config.conf["cloudUploader"]["fileUploadOnly"]:
-				recordItem = menu.Append(wx.ID_ANY, _("&Record and upload"))
+			if config.conf["cloudUploader"]["showRecordInMenu"]:
+				recordItem = menu.Append(wx.ID_ANY, _("&Record"))
 				gui.mainFrame.Bind(wx.EVT_MENU, lambda evt: self._onMenuRecord(), recordItem)
 
-			bgItem = menu.Append(wx.ID_ANY, _("&Background recording"))
-			gui.mainFrame.Bind(wx.EVT_MENU, lambda evt: self._onMenuBackground(), bgItem)
+			if config.conf["cloudUploader"]["showBackgroundInMenu"]:
+				bgItem = menu.Append(wx.ID_ANY, _("&Background recording"))
+				gui.mainFrame.Bind(wx.EVT_MENU, lambda evt: self._onMenuBackground(), bgItem)
 
-			historyItem = menu.Append(wx.ID_ANY, _("&History"))
-			gui.mainFrame.Bind(wx.EVT_MENU, lambda evt: self._onMenuHistory(), historyItem)
+			if config.conf["cloudUploader"]["showHistoryInMenu"]:
+				historyItem = menu.Append(wx.ID_ANY, _("&History"))
+				gui.mainFrame.Bind(wx.EVT_MENU, lambda evt: self._onMenuHistory(), historyItem)
 
 			gui.mainFrame.PopupMenu(menu)
 			menu.Destroy()
@@ -4838,7 +4861,26 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			ui.message(_("The upload history window is already open"))
 			return
 		wx.CallAfter(self._showLinkHistory)
-	script_showLinkHistory.__doc__ = _("Show previously uploaded files so you can copy, open, or delete their links")
+	script_showLinkHistory.__doc__ = _(
+		"Show previously uploaded files so you can copy, open, or delete their links. "
+		"Unassigned by default; also available from the NVDA+alt+o menu."
+	)
+
+	def script_recordAndUpload(self, gesture):
+		if not self._termsAccepted():
+			ui.message(_("Please accept the Cloud Uploader terms of service first. Restart NVDA to see the notice again."))
+			return
+		if self._uploading:
+			ui.message(_("An upload is already in progress"))
+			return
+		if self._selectionDialog is not None:
+			self._focusExistingDialog(self._selectionDialog)
+			ui.message(_("A Cloud Uploader dialog is already open"))
+			return
+		wx.CallAfter(self._showRecordDialog)
+	script_recordAndUpload.__doc__ = _(
+		"Record a new voice clip and upload it. Unassigned by default; also available from the NVDA+alt+o menu."
+	)
 
 	def script_toggleBackgroundRecord(self, gesture):
 		"""Start or stop a headless recording. First press starts capture with
@@ -4870,9 +4912,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			log.error("Cloud Uploader: background recording toggle failed: %s" % e, exc_info=True)
 			ui.message(_("Cloud Uploader recording failed: {error}").format(error=e))
 	script_toggleBackgroundRecord.__doc__ = _(
-		"Start or stop background voice recording. First press starts recording with no window; "
-		"second press stops and opens the record dialog. Unassigned by default; the same action "
-		"is also available from the NVDA+alt+o menu."
+		"Start or stop background voice recording. Unassigned by default; also available from the NVDA+alt+o menu."
 	)
 
 	def _scheduleBgPoll(self):

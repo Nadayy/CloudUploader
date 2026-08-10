@@ -7,13 +7,15 @@ Upload any file to the cloud and share a download link, entirely from the keyboa
 Everything starts from one shortcut: **NVDA+alt+o**. It opens a menu with:
 
 - **&Upload a file** — choose a file from disk, then pick an upload host and expiry.
-- **&Record and upload** — record a new clip (microphone, computer audio, or both), then pick an upload host and expiry.
+- **&Record** — record a new clip (microphone, computer audio, or both), then pick an upload host and expiry.
 - **&Background recording** — starts a headless recording with no window (uses your default source and devices). Press NVDA+alt+o again (no need to open the menu) to stop it and open the usual record dialog to preview, edit, and upload.
 - **&History** — browse your upload history. Enter opens Copy/Open/Delete options; Control+C copies the link directly; Delete removes an entry. Expired links drop off the list automatically.
 
 Each menu item's underlined letter (U, R, B, H) can be pressed directly once the menu is open, the same as any other Windows menu. Escape closes the menu without doing anything.
 
-Only one shortcut is assigned by default, to avoid clashing with NVDA's own commands or other add-ons. If you'd like separate shortcuts for history or background recording again, they can be assigned individually from NVDA's Input Gestures dialog (NVDA+N → Preferences → Input gestures → Cloud Uploader) — the underlying commands are still there, just unbound by default.
+Only one shortcut is assigned by default, to avoid clashing with NVDA's own commands or other add-ons. Every menu item can also be reached as its own separately-assignable command from NVDA's Input Gestures dialog (NVDA+N → Preferences → Input gestures → Cloud Uploader) — including "Record" on its own, for a direct recording shortcut without opening the menu first.
+
+Each of "Record," "Background recording," and "History" can be hidden from the NVDA+alt+o menu individually in Settings, for example if you've given it its own shortcut and don't need it cluttering the menu, or just don't use it. If all three are hidden, NVDA+alt+o skips the menu entirely and goes straight to choosing a file to upload.
 
 ### Recording
 
@@ -48,7 +50,7 @@ A short summary of this notice is shown, in a dialog, the first time NVDA starts
 
 ## Settings
 
-Available under NVDA+control+g → Cloud Uploader: a default host, auto-copy on upload, history size, and recording options (format, quality, device, channels, auto-start recording, ffmpeg path).
+Available under NVDA+control+g → Cloud Uploader: a default host, auto-copy on upload, history size, recording options (format, quality, device, channels, auto-start recording, ffmpeg path), and which items show up in the NVDA+alt+o menu.
 
 ## Notes
 
