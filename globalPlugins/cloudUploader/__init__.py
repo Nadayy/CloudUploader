@@ -4686,6 +4686,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._history = _pruneExpired(_loadHistory())
 		self._selectionDialog = None
 		self._historyDialog = None
+		self._menuOpen = False
 		self._pendingUploadPaths = []
 		self._deleteAfterUploadFlag = False
 		# Headless background recording, reachable via the NVDA+alt+o menu
@@ -4759,6 +4760,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			pass
 
 	def script_uploadFile(self, gesture):
+		if self._menuOpen:
+			return
 		if not self._termsAccepted():
 			ui.message(_("Please accept the Cloud Uploader terms of service first. Restart NVDA to see the notice again."))
 			return
@@ -4790,6 +4793,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			# Only "Upload a file" would remain; skip the menu and go straight there.
 			wx.CallAfter(self._showFileDialog)
 			return
+		self._menuOpen = True
 		wx.CallAfter(self._showMainMenu)
 	script_uploadFile.__doc__ = _(
 		"Open the Cloud Uploader menu: upload a file, record and upload, start "
@@ -4822,6 +4826,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			menu.Destroy()
 		finally:
 			gui.mainFrame.postPopup()
+			self._menuOpen = False
 
 	def _onMenuUpload(self):
 		wx.CallAfter(self._showFileDialog)
