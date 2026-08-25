@@ -46,7 +46,7 @@ Files are uploaded anonymously to whichever host you pick:
 
 **In short:** stick to reasonable, legal content and reasonable file sizes, and don't rely on any of these hosts for anything sensitive, permanent, or high-volume. If a host blocks your IP for a terms violation, that block is enforced by the host itself — this add-on has no way to appeal it or work around it for you.
 
-A short summary of this notice is shown, in a dialog, the first time NVDA starts after installing or updating this add-on. You must check "I have read and understand the above" before Agree becomes available. Choosing Disagree, or dismissing the dialog with Escape, does not record acceptance, so it will be shown again the next time NVDA starts. Agreeing records acceptance for the version of the add-on you're running; if you later update to a newer version, it will be shown again, even if you already agreed to an earlier version.
+A short summary of this notice is shown, in a dialog, the first time NVDA starts after installing this add-on. You must check "I have read and understand the above" before Agree becomes available. Choosing Disagree, or dismissing the dialog with Escape, does not record acceptance, so it will be shown again the next time NVDA starts. It will not be shown again after that unless the wording of this notice is meaningfully updated in a future version — everyday updates (new features, bug fixes) won't bring it back.
 
 ## Settings
 

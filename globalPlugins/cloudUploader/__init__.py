@@ -60,6 +60,11 @@ UPLOAD_HOST = "litterbox.catbox.moe"
 UPLOAD_PATH = "/resources/internals/api.php"
 HISTORY_MAX_ENTRIES_DEFAULT = 50
 
+# Bump this only when the wording of TERMS_TEXT below meaningfully changes.
+# Everyone who already agreed will then see the notice again; a new add-on
+# version alone (new features, bug fixes) will NOT re-trigger it.
+TERMS_VERSION = "1"
+
 TERMS_TEXT = _(
 	"Cloud Uploader sends files to free, independently-operated third-party "
 	"hosts (Litterbox, Catbox, Gofile, 0x0.st, Filebin, and Uguu), not a "
@@ -4657,6 +4662,10 @@ class TermsDialog(wx.Dialog):
 		if not self.understandCheckbox.GetValue():
 			return
 		config.conf["cloudUploader"]["termsAcceptedVersion"] = self._termsVersion
+		try:
+			config.conf.save()
+		except Exception:
+			log.error("Cloud Uploader: could not save terms acceptance", exc_info=True)
 		self.EndModal(wx.ID_OK)
 
 	def onDisagree(self, evt):
@@ -4705,18 +4714,22 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._bgPollScheduled = False
 		_pruneOldRecordings()
 		gui.NVDASettingsDialog.categoryClasses.append(CloudUploaderSettingsPanel)
-		try:
-			self._termsVersion = addonHandler.getCodeAddon().manifest["version"]
-		except Exception:
-			log.error("Cloud Uploader: could not read own add-on version", exc_info=True)
-			self._termsVersion = None
-		if self._termsVersion is not None and config.conf["cloudUploader"]["termsAcceptedVersion"] != self._termsVersion:
+		self._termsVersion = TERMS_VERSION
+		storedTermsVersion = config.conf["cloudUploader"]["termsAcceptedVersion"]
+		if storedTermsVersion and storedTermsVersion != self._termsVersion and "." in storedTermsVersion:
+			# Versions up to 4.25.1 stored the add-on's own version number
+			# here (e.g. "4.25.1") instead of a manual terms-wording version.
+			# Anyone with a value like that already agreed to this exact
+			# wording before; migrate them silently instead of re-prompting.
+			config.conf["cloudUploader"]["termsAcceptedVersion"] = self._termsVersion
+			try:
+				config.conf.save()
+			except Exception:
+				log.error("Cloud Uploader: could not save migrated terms acceptance", exc_info=True)
+		elif config.conf["cloudUploader"]["termsAcceptedVersion"] != self._termsVersion:
 			core.postNvdaStartup.register(self._showTermsIfNeeded)
 
 	def _termsAccepted(self):
-		if self._termsVersion is None:
-			# Couldn't determine our own version; don't block usage over that.
-			return True
 		return config.conf["cloudUploader"]["termsAcceptedVersion"] == self._termsVersion
 
 	def _showTermsIfNeeded(self):

@@ -1,0 +1,864 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: cloudUploader\n"
+"POT-Creation-Date: 2026-08-16 00:00+0000\n"
+"PO-Revision-Date: 2026-08-16 00:00+0000\n"
+"Last-Translator: naday <dianarl0206@gmail.com>\n"
+"Language-Team: Spanish\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid ""
+"Cloud Uploader sends files to free, independently-operated third-party hosts (Litterbox, Catbox, Gofile, 0x0.st, Filebin, and Uguu), not a service run by this add-on. Each host has its own file size limits, content rules, and retention time, and violating a host's rules can get your uploads deleted and your IP address blocked from that host.\n"
+"\n"
+"In short: only upload content you have the right to share, that is legal, and that is reasonably sized. Do not rely on any of these hosts for anything sensitive, permanent, or high-volume.\n"
+"\n"
+"Full details for each host, including exact size limits and banned content, are in this add-on's documentation (NVDA menu > Help > Add-on Help, or the readme in the add-on's folder)."
+msgstr ""
+"Cloud Uploader envía archivos a servidores gratuitos e independientes "
+"(Litterbox, Catbox, Gofile, 0x0.st, Filebin y Uguu), no a un servicio "
+"operado por este complemento. Cada servidor tiene sus propios límites de "
+"tamaño, reglas de contenido y tiempo de retención, y violar las reglas de un"
+" servidor puede hacer que borren tus archivos y bloqueen tu dirección "
+"IP.\\n\\nEn resumen: sube solo contenido que tengas derecho a compartir, que"
+" sea legal, y de tamaño razonable. No dependas de ninguno de estos "
+"servidores para nada sensible, permanente o de gran volumen.\\n\\nLos "
+"detalles completos de cada servidor, incluyendo límites exactos y contenido "
+"prohibido, están en la documentación de este complemento (menú de NVDA > "
+"Ayuda > Ayuda del complemento, o el archivo readme en la carpeta del "
+"complemento)."
+
+msgid "MP3"
+msgstr "MP3"
+
+msgid "WAV"
+msgstr "WAV"
+
+msgid "FLAC"
+msgstr "FLAC"
+
+msgid "Microphone only"
+msgstr "Solo micrófono"
+
+msgid "Computer audio only"
+msgstr "Solo audio de la computadora"
+
+msgid "Microphone and computer audio"
+msgstr "Micrófono y audio de la computadora"
+
+msgid "Low"
+msgstr "Baja"
+
+msgid "Medium"
+msgstr "Media"
+
+msgid "High"
+msgstr "Alta"
+
+msgid "1 hour"
+msgstr "1 hora"
+
+msgid "12 hours"
+msgstr "12 horas"
+
+msgid "1 day"
+msgstr "1 día"
+
+msgid "3 days"
+msgstr "3 días"
+
+msgid "Default retention (about 10 days for anonymous uploads)"
+msgstr ""
+"Retención predeterminada (aproximadamente 10 días para subidas anónimas)"
+
+msgid "Permanent, kept indefinitely"
+msgstr "Permanente, se conserva indefinidamente"
+
+msgid ""
+"At least 30 days, up to 1 year for smaller files (larger files are kept for "
+"less time)"
+msgstr ""
+"Al menos 30 días, hasta 1 año para archivos más pequeños (los archivos más "
+"grandes se conservan menos tiempo)"
+
+msgid "Default retention (about 6 days)"
+msgstr "Retención predeterminada (aproximadamente 6 días)"
+
+msgid "Automatic (temporary storage, about 48 hours)"
+msgstr "Automática (almacenamiento temporal, aproximadamente 48 horas)"
+
+msgid "System default"
+msgstr "Predeterminado del sistema"
+
+msgid "Device {index}"
+msgstr "Dispositivo {index}"
+
+msgid ""
+"The recording device did not accept any supported audio format (error "
+"{code})"
+msgstr ""
+"El dispositivo de grabación no aceptó ningún formato de audio compatible "
+"(error {code})"
+
+msgid "Could not prepare the recording buffer (error {code})"
+msgstr "No se pudo preparar el búfer de grabación (error {code})"
+
+msgid "Could not queue the recording buffer (error {code})"
+msgstr "No se pudo encolar el búfer de grabación (error {code})"
+
+msgid "Could not start recording (error {code})"
+msgstr "No se pudo iniciar la grabación (error {code})"
+
+msgid "Computer audio recording is unavailable on this system"
+msgstr ""
+"La grabación de audio de la computadora no está disponible en este sistema"
+
+msgid "Playback device {n} ({id})"
+msgstr "Dispositivo de reproducción {n} ({id})"
+
+msgid "just now"
+msgstr "justo ahora"
+
+msgid "{n} min ago"
+msgstr "hace {n} min"
+
+msgid "{n} h ago"
+msgstr "hace {n} h"
+
+msgid "{n} d ago"
+msgstr "hace {n} d"
+
+msgid "expired"
+msgstr "expirado"
+
+msgid "in {n} min"
+msgstr "en {n} min"
+
+msgid "in {n} h"
+msgstr "en {n} h"
+
+msgid "in {n} d"
+msgstr "en {n} d"
+
+msgid "Could not connect to the upload server."
+msgstr "No se pudo conectar con el servidor de subida."
+
+msgid ""
+"Could not connect to the upload server. Please check your internet "
+"connection."
+msgstr ""
+"No se pudo conectar con el servidor de subida. Verifica tu conexión a "
+"internet."
+
+msgid ""
+"The connection was lost while uploading. Please check your internet "
+"connection and try again."
+msgstr ""
+"Se perdió la conexión durante la subida. Verifica tu conexión a internet e "
+"inténtalo de nuevo."
+
+msgid "The upload server returned an error ({status}): {text}"
+msgstr "El servidor de subida devolvió un error ({status}): {text}"
+
+msgid "The upload server returned an unexpected response: {text}"
+msgstr "El servidor de subida devolvió una respuesta inesperada: {text}"
+
+msgid "The upload server rejected the file: {text}"
+msgstr "El servidor de subida rechazó el archivo: {text}"
+
+msgid ""
+"Litterbox (catbox.moe) - kept 1 hour to 3 days depending on your choice, but"
+" renames your file"
+msgstr ""
+"Litterbox (catbox.moe): se conserva de 1 hora a 3 días según tu elección, "
+"pero renombra tu archivo"
+
+msgid ""
+"Gofile - keeps your original file name on a download page, kept about 10 "
+"days"
+msgstr ""
+"Gofile: conserva el nombre original de tu archivo en una página de descarga,"
+" se guarda unos 10 días"
+
+msgid "Catbox (catbox.moe) - permanent storage, but renames your file"
+msgstr ""
+"Catbox (catbox.moe): almacenamiento permanente, pero renombra tu archivo"
+
+msgid ""
+"0x0.st - kept 30 days to 1 year depending on file size, but renames your "
+"file"
+msgstr ""
+"0x0.st: se conserva de 30 días a 1 año según el tamaño del archivo, pero "
+"renombra tu archivo"
+
+msgid ""
+"Filebin - keeps your original file name, but not a direct download link, "
+"expires in about 6 days"
+msgstr ""
+"Filebin: conserva el nombre original de tu archivo, pero no es un enlace de "
+"descarga directa, expira en unos 6 días"
+
+msgid "Uguu - temporary storage, about 48 hours, renames your file"
+msgstr "Uguu: almacenamiento temporal, unas 48 horas, renombra tu archivo"
+
+msgid "Upload host"
+msgstr "Servidor de subida"
+
+msgid "Which host should this file be uploaded to?"
+msgstr "¿A qué servidor se debe subir este archivo?"
+
+msgid "&Check server status"
+msgstr "Verificar estado del servidor (&C)"
+
+msgid "&OK"
+msgstr "Aceptar (&O)"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Checking server status, please wait..."
+msgstr "Verificando el estado del servidor, un momento..."
+
+msgid "{label} - working"
+msgstr "{label} - funcionando"
+
+msgid "{label} - not responding"
+msgstr "{label} - sin respuesta"
+
+msgid "Server check complete. {up} of {total} hosts are working."
+msgstr "Verificación completa. {up} de {total} servidores están funcionando."
+
+msgid "Upload failed"
+msgstr "La subida falló"
+
+msgid "&Retry the same host"
+msgstr "Reintentar con el mismo servidor (&R)"
+
+msgid "&Choose another host"
+msgstr "Elegir otro servidor (&C)"
+
+msgid "&Cancel upload"
+msgstr "Cancelar subida (&C)"
+
+msgid "&Copy link"
+msgstr "Copiar enlace (&C)"
+
+msgid "&Open in browser"
+msgstr "Abrir en el navegador (&O)"
+
+msgid "&Delete"
+msgstr "Eliminar (&D)"
+
+msgid "Clos&e"
+msgstr "Cerrar (&e)"
+
+msgid "Opening link in your browser"
+msgstr "Abriendo el enlace en tu navegador"
+
+msgid "Upload history"
+msgstr "Historial de subidas"
+
+msgid ""
+"Enter for options, control+C to copy, delete to remove. Most recent first."
+msgstr ""
+"Enter para opciones, control+C para copiar, suprimir para eliminar. Los más "
+"recientes primero."
+
+msgid "You haven't uploaded any files yet."
+msgstr "Aún no has subido ningún archivo."
+
+msgid "File"
+msgstr "Archivo"
+
+msgid "Expires"
+msgstr "Expira"
+
+msgid "Uploaded"
+msgstr "Subido"
+
+msgid "Please select an item first"
+msgstr "Selecciona un elemento primero"
+
+msgid "Removed {fileName}"
+msgstr "Se eliminó {fileName}"
+
+msgid "Link options"
+msgstr "Opciones del enlace"
+
+msgid "{fileName} - {since}, expires {until}"
+msgstr "{fileName} - {since}, expira {until}"
+
+msgid "Elapsed time: 0:00"
+msgstr "Tiempo transcurrido: 0:00"
+
+msgid "Elapsed time: {m}:{s:02d}"
+msgstr "Tiempo transcurrido: {m}:{s:02d}"
+
+msgid "Could not open the audio playback device (error {code})"
+msgstr ""
+"No se pudo abrir el dispositivo de reproducción de audio (error {code})"
+
+msgid "Record voice"
+msgstr "Grabar voz"
+
+msgid "Not recording. Press Record to begin."
+msgstr "Sin grabar. Presiona Grabar para empezar."
+
+msgid "Record:"
+msgstr "Grabar:"
+
+msgid "Microphone device:"
+msgstr "Dispositivo de micrófono:"
+
+msgid "Computer audio comes from:"
+msgstr "Origen del audio de la computadora:"
+
+msgid "Save microphone and computer audio as separate tracks"
+msgstr ""
+"Guardar el micrófono y el audio de la computadora como pistas separadas"
+
+msgid "Save these settings for future recordings"
+msgstr "Guardar esta configuración para futuras grabaciones"
+
+msgid "&Record"
+msgstr "Grabar (&R)"
+
+msgid "&Preview"
+msgstr "Previsualizar (&P)"
+
+msgid "Re&move recording"
+msgstr "Eliminar grabación (&m)"
+
+msgid "R&ename recording"
+msgstr "Renombrar grabación (&e)"
+
+msgid "Silence removal (microphone only):"
+msgstr "Eliminación de silencios (solo micrófono):"
+
+msgid "Light"
+msgstr "Ligera"
+
+msgid "Aggressive"
+msgstr "Agresiva"
+
+msgid "Remove si&lence"
+msgstr "Eliminar silencios (&l)"
+
+msgid "Noise reduction sensitivity (microphone only):"
+msgstr "Sensibilidad de reducción de ruido (solo micrófono):"
+
+msgid "Re&duce noise"
+msgstr "Reducir ruido (&d)"
+
+msgid "&Normalize volume"
+msgstr "Normalizar volumen (&N)"
+
+msgid "Undo (Ctrl+Z)"
+msgstr "Deshacer (Ctrl+Z)"
+
+msgid "Redo (Ctrl+Y)"
+msgstr "Rehacer (Ctrl+Y)"
+
+msgid "Microphone volume:"
+msgstr "Volumen del micrófono:"
+
+msgid "Computer audio volume:"
+msgstr "Volumen del audio de la computadora:"
+
+msgid "Upload and Sa&ve"
+msgstr "Subir y guardar (&v)"
+
+msgid "Upload &Without Saving"
+msgstr "Subir sin guardar (&W)"
+
+msgid "&Keep Without Uploading"
+msgstr "Conservar sin subir (&K)"
+
+msgid "Could not load the recording: {error}"
+msgstr "No se pudo cargar la grabación: {error}"
+
+msgid "Recording error"
+msgstr "Error de grabación"
+
+msgid "Settings saved for future recordings"
+msgstr "Configuración guardada para futuras grabaciones"
+
+msgid "Could not start recording: {error}"
+msgstr "No se pudo iniciar la grabación: {error}"
+
+msgid "&Stop"
+msgstr "Detener (&S)"
+
+msgid "Recording... 0:00"
+msgstr "Grabando... 0:00"
+
+msgid ""
+"The selected microphone and computer audio device weren't available, using "
+"the system defaults instead"
+msgstr ""
+"El micrófono y el dispositivo de audio de la computadora seleccionados no "
+"estaban disponibles, se usarán los predeterminados del sistema"
+
+msgid ""
+"The selected microphone wasn't available, using the system default instead"
+msgstr ""
+"El micrófono seleccionado no estaba disponible, se usará el predeterminado "
+"del sistema"
+
+msgid ""
+"The selected computer audio device wasn't available, using the system "
+"default instead"
+msgstr ""
+"El dispositivo de audio de la computadora seleccionado no estaba disponible,"
+" se usará el predeterminado del sistema"
+
+msgid "Now recording"
+msgstr "Grabando ahora"
+
+msgid "Processing recording, please wait..."
+msgstr "Procesando la grabación, un momento..."
+
+msgid "Could not save the recording: {error}"
+msgstr "No se pudo guardar la grabación: {error}"
+
+msgid "&Record again"
+msgstr "Grabar de nuevo (&R)"
+
+msgid "Recording complete, length {m}:{s:02d}"
+msgstr "Grabación completa, duración {m}:{s:02d}"
+
+msgid "Recording stopped"
+msgstr "Grabación detenida"
+
+msgid "No silence found to remove at this sensitivity"
+msgstr "No se encontró silencio para eliminar con esta sensibilidad"
+
+msgid ""
+"Muted {seconds:.1f} seconds of silence in the microphone track. Length "
+"{m}:{s:02d}"
+msgstr ""
+"Se silenciaron {seconds:.1f} segundos de silencio en la pista del micrófono."
+" Duración {m}:{s:02d}"
+
+msgid "Muted {seconds:.1f} seconds of silence in the microphone track"
+msgstr ""
+"Se silenciaron {seconds:.1f} segundos de silencio en la pista del micrófono"
+
+msgid "Removed {removed:.1f} seconds of silence. Length {m}:{s:02d}"
+msgstr ""
+"Se eliminaron {removed:.1f} segundos de silencio. Duración {m}:{s:02d}"
+
+msgid "Removed {removed:.1f} seconds of silence"
+msgstr "Se eliminaron {removed:.1f} segundos de silencio"
+
+msgid "Reducing noise..."
+msgstr "Reduciendo ruido..."
+
+msgid "Reducing noise, please wait (slower without ffmpeg)..."
+msgstr "Reduciendo ruido, un momento (más lento sin ffmpeg)..."
+
+msgid ""
+"Reducing noise, please wait, this may take a while without ffmpeg "
+"installed..."
+msgstr "Reduciendo ruido, esto puede tardar un poco sin ffmpeg instalado..."
+
+msgid "Noise reduction applied. Length {m}:{s:02d}"
+msgstr "Reducción de ruido aplicada. Duración {m}:{s:02d}"
+
+msgid "Noise reduced by about {db:.0f} dB"
+msgstr "Ruido reducido en aproximadamente {db:.0f} dB"
+
+msgid "Noise reduction failed: {error}"
+msgstr "La reducción de ruido falló: {error}"
+
+msgid "Noise reduction failed"
+msgstr "La reducción de ruido falló"
+
+msgid "Already at maximum volume without clipping"
+msgstr "Ya está al volumen máximo sin distorsión"
+
+msgid "Microphone and computer audio volume normalized"
+msgstr "Volumen del micrófono y del audio de la computadora normalizado"
+
+msgid "Volume normalized"
+msgstr "Volumen normalizado"
+
+msgid "Nothing to undo"
+msgstr "Nada que deshacer"
+
+msgid "Undone. Length {m}:{s:02d}"
+msgstr "Deshecho. Duración {m}:{s:02d}"
+
+msgid "Undone"
+msgstr "Deshecho"
+
+msgid "Nothing to redo"
+msgstr "Nada que rehacer"
+
+msgid "Redone. Length {m}:{s:02d}"
+msgstr "Rehecho. Duración {m}:{s:02d}"
+
+msgid "Redone"
+msgstr "Rehecho"
+
+msgid "Microphone volume {db:+.0f} dB"
+msgstr "Volumen del micrófono {db:+.0f} dB"
+
+msgid "Computer audio volume {db:+.0f} dB"
+msgstr "Volumen del audio de la computadora {db:+.0f} dB"
+
+msgid "Delete this recording from your device? This cannot be undone."
+msgstr ""
+"¿Eliminar esta grabación de tu dispositivo? Esto no se puede deshacer."
+
+msgid "Remove recording"
+msgstr "Eliminar grabación"
+
+msgid "Recording removed. Press Record to begin."
+msgstr "Grabación eliminada. Presiona Grabar para empezar."
+
+msgid "Recording removed"
+msgstr "Grabación eliminada"
+
+msgid "Enter a new name for this recording:"
+msgstr "Escribe un nuevo nombre para esta grabación:"
+
+msgid "Rename recording"
+msgstr "Renombrar grabación"
+
+msgid "A recording with that name already exists"
+msgstr "Ya existe una grabación con ese nombre"
+
+msgid "Could not rename the recording: {error}"
+msgstr "No se pudo renombrar la grabación: {error}"
+
+msgid "Recording renamed to {name}"
+msgstr "Grabación renombrada a {name}"
+
+msgid "Recording... {m}:{s:02d}"
+msgstr "Grabando... {m}:{s:02d}"
+
+msgid "Could not play preview"
+msgstr "No se pudo reproducir la vista previa"
+
+msgid "&Stop preview"
+msgstr "Detener vista previa (&v)"
+
+msgid "Playing preview"
+msgstr "Reproduciendo vista previa"
+
+msgid "Please record something first"
+msgstr "Graba algo primero"
+
+msgid "Cloud Uploader"
+msgstr "Cloud Uploader"
+
+msgid "Uploading"
+msgstr "Subiendo"
+
+msgid "Always ask"
+msgstr "Preguntar siempre"
+
+msgid "Default upload host:"
+msgstr "Servidor de subida predeterminado:"
+
+msgid "Automatically copy the link and skip the confirmation dialog"
+msgstr "Copiar el enlace automáticamente y omitir el cuadro de confirmación"
+
+msgid "After checking server status, show only the hosts that are working"
+msgstr ""
+"Después de verificar el estado del servidor, mostrar solo los servidores que"
+" funcionan"
+
+msgid "Maximum number of links to keep in history:"
+msgstr "Número máximo de enlaces a conservar en el historial:"
+
+msgid "Voice recording"
+msgstr "Grabación de voz"
+
+msgid "Record in format:"
+msgstr "Grabar en formato:"
+
+msgid "Audio quality (applies to MP3 and FLAC):"
+msgstr "Calidad de audio (aplica a MP3 y FLAC):"
+
+msgid "Recording device:"
+msgstr "Dispositivo de grabación:"
+
+msgid "Stereo (if the device supports it)"
+msgstr "Estéreo (si el dispositivo lo permite)"
+
+msgid "Mono"
+msgstr "Mono"
+
+msgid "Recording channels:"
+msgstr "Canales de grabación:"
+
+msgid "Default what to record:"
+msgstr "Qué grabar de forma predeterminada:"
+
+msgid ""
+"When recording both microphone and computer audio, save them as separate "
+"tracks by default"
+msgstr ""
+"Al grabar el micrófono y el audio de la computadora juntos, guardarlos como "
+"pistas separadas de forma predeterminada"
+
+msgid "Default microphone volume when recording both (dB):"
+msgstr "Volumen predeterminado del micrófono al grabar ambos (dB):"
+
+msgid "Default computer audio volume when recording both (dB):"
+msgstr ""
+"Volumen predeterminado del audio de la computadora al grabar ambos (dB):"
+
+msgid ""
+"Path to ffmpeg.exe, used to encode voice recordings to MP3/FLAC (leave blank"
+" to auto-detect from PATH):"
+msgstr ""
+"Ruta a ffmpeg.exe, usado para codificar grabaciones de voz a MP3/FLAC (deja "
+"en blanco para detectar automáticamente desde PATH):"
+
+msgid ""
+"Start recording immediately when choosing \"Record a new voice clip\" (uses "
+"your default source, devices, and volumes; press Stop when finished)"
+msgstr ""
+"Empezar a grabar de inmediato al elegir \"Grabar un nuevo clip de voz\" (usa"
+" tu fuente, dispositivos y volúmenes predeterminados; presiona Detener al "
+"terminar)"
+
+msgid "Recordings stored on this device"
+msgstr "Grabaciones almacenadas en este dispositivo"
+
+msgid "&Open recordings folder"
+msgstr "Abrir carpeta de grabaciones (&O)"
+
+msgid "&Clear all recordings"
+msgstr "Borrar todas las grabaciones (&C)"
+
+msgid "Other"
+msgstr "Otro"
+
+msgid "&Donate to support development"
+msgstr "Donar para apoyar el desarrollo (&D)"
+
+msgid "Could not open the recordings folder: {error}"
+msgstr "No se pudo abrir la carpeta de grabaciones: {error}"
+
+msgid "Error"
+msgstr "Error"
+
+msgid "Remove all recordings stored on this device? This cannot be undone."
+msgstr ""
+"¿Eliminar todas las grabaciones almacenadas en este dispositivo? Esto no se "
+"puede deshacer."
+
+msgid "Clear all recordings"
+msgstr "Borrar todas las grabaciones"
+
+msgid "Removed {n} recording(s)."
+msgstr "Se eliminaron {n} grabación(es)."
+
+msgid "Cloud Uploader: upload hosts and terms of service"
+msgstr "Cloud Uploader: servidores de subida y términos de servicio"
+
+msgid "I have read and understand the above"
+msgstr "He leído y entiendo lo anterior"
+
+msgid "&Agree"
+msgstr "Aceptar (&A)"
+
+msgid "&Disagree"
+msgstr "Rechazar (&D)"
+
+msgid ""
+"Please accept the Cloud Uploader terms of service first. Restart NVDA to see"
+" the notice again."
+msgstr ""
+"Primero acepta los términos de servicio de Cloud Uploader. Reinicia NVDA "
+"para ver el aviso de nuevo."
+
+msgid "Still processing the previous recording, please wait"
+msgstr "Todavía se está procesando la grabación anterior, dame un momento"
+
+msgid "An upload is already in progress"
+msgstr "Ya hay una subida en curso"
+
+msgid "A Cloud Uploader dialog is already open"
+msgstr "Ya tienes un cuadro de diálogo de Cloud Uploader abierto"
+
+msgid "The upload history window is already open"
+msgstr "La ventana del historial de subidas ya está abierta"
+
+msgid ""
+"Open the Cloud Uploader menu: upload a file, record and upload, start "
+"background recording, or view upload history. If a background recording is "
+"already running, pressing this again stops it. If every other menu item is "
+"hidden in Settings, this goes straight to choosing a file instead of opening"
+" a one-item menu."
+msgstr ""
+"Abre el menú de Cloud Uploader: subir un archivo, grabar y subir, iniciar "
+"grabación en segundo plano, o ver el historial de subidas. Si ya hay una "
+"grabación en segundo plano en curso, al volver a presionar esto se detiene. "
+"Si todos los demás elementos del menú están ocultos en Configuración, esto "
+"va directamente a elegir un archivo en lugar de abrir un menú de un solo "
+"elemento."
+
+msgid "&Upload a file"
+msgstr "Subir un archivo (&U)"
+
+msgid "&Background recording"
+msgstr "Grabación en segundo plano (&B)"
+
+msgid "&History"
+msgstr "Historial (&H)"
+
+msgid "NVDA+alt+o menu"
+msgstr "Menú de NVDA+alt+o"
+
+msgid "Cloud Uploader recording failed: {error}"
+msgstr "La grabación de Cloud Uploader falló: {error}"
+
+msgid ""
+"Show previously uploaded files so you can copy, open, or delete their links."
+" Unassigned by default; also available from the NVDA+alt+o menu."
+msgstr ""
+"Muestra los archivos subidos anteriormente para que puedas copiar, abrir o "
+"eliminar sus enlaces. Sin tecla asignada de forma predeterminada; también "
+"disponible en el menú de NVDA+alt+o."
+
+msgid ""
+"Record a new voice clip and upload it. Unassigned by default; also available"
+" from the NVDA+alt+o menu."
+msgstr ""
+"Graba un nuevo clip de voz y lo sube. Sin tecla asignada de forma "
+"predeterminada; también disponible en el menú de NVDA+alt+o."
+
+msgid ""
+"Start or stop background voice recording. Unassigned by default; also "
+"available from the NVDA+alt+o menu."
+msgstr ""
+"Inicia o detiene la grabación de voz en segundo plano. Sin tecla asignada de"
+" forma predeterminada; también disponible en el menú de NVDA+alt+o."
+
+msgid ""
+"Background recording started using system default devices. Press NVDA+alt+o "
+"again to stop."
+msgstr ""
+"Grabación en segundo plano iniciada usando los dispositivos predeterminados "
+"del sistema. Presiona NVDA+alt+o de nuevo para detenerla."
+
+msgid ""
+"Background recording started (default microphone). Press NVDA+alt+o again to"
+" stop."
+msgstr ""
+"Grabación en segundo plano iniciada (micrófono predeterminado). Presiona "
+"NVDA+alt+o de nuevo para detenerla."
+
+msgid ""
+"Background recording started (default computer audio device). Press "
+"NVDA+alt+o again to stop."
+msgstr ""
+"Grabación en segundo plano iniciada (dispositivo de audio de la computadora "
+"predeterminado). Presiona NVDA+alt+o de nuevo para detenerla."
+
+msgid "Background recording started. Press NVDA+alt+o again to stop."
+msgstr ""
+"Grabación en segundo plano iniciada. Presiona NVDA+alt+o de nuevo para "
+"detenerla."
+
+msgid "Recording kept without uploading"
+msgstr "Grabación conservada sin subir"
+
+msgid "What would you like to upload?"
+msgstr "¿Qué te gustaría subir?"
+
+msgid "Choose an existing file from disk"
+msgstr "Elegir un archivo existente del disco"
+
+msgid "Record a new voice clip"
+msgstr "Grabar un nuevo clip de voz"
+
+msgid "Encoding, please wait..."
+msgstr "Codificando, un momento..."
+
+msgid ""
+"Cloud Uploader could not find ffmpeg, so this recording will be uploaded as "
+"a WAV file instead of {format}. If ffmpeg is installed, open NVDA's "
+"settings, go to Cloud Uploader, and set the path to ffmpeg.exe there; leave "
+"it blank to have Cloud Uploader search your PATH and a few common install "
+"locations automatically."
+msgstr ""
+"Cloud Uploader no pudo encontrar ffmpeg, así que esta grabación se subirá "
+"como archivo WAV en lugar de {format}. Si tienes ffmpeg instalado, abre la "
+"configuración de NVDA, ve a Cloud Uploader y ahí establece la ruta a "
+"ffmpeg.exe; déjalo en blanco para que Cloud Uploader busque en tu PATH y "
+"algunas ubicaciones comunes automáticamente."
+
+msgid "ffmpeg not found"
+msgstr "No se encontró ffmpeg"
+
+msgid ""
+"Encoding to {format} failed, so this recording will be uploaded as a WAV file instead. ffmpeg reported:\n"
+"\n"
+"{error}"
+msgstr ""
+"La codificación a {format} falló, así que esta grabación se subirá como archivo WAV. ffmpeg reportó:\n"
+"\n"
+"{error}"
+
+msgid "(no output)"
+msgstr "(sin salida)"
+
+msgid "Encoding failed"
+msgstr "La codificación falló"
+
+msgid "Select a file to upload"
+msgstr "Selecciona un archivo para subir"
+
+msgid "All files"
+msgstr "Todos los archivos"
+
+msgid "How long should the download link stay active?"
+msgstr "¿Cuánto tiempo debe estar activo el enlace de descarga?"
+
+msgid "Link expiry"
+msgstr "Expiración del enlace"
+
+msgid "Uploading file"
+msgstr "Subiendo archivo"
+
+msgid "Uploading {fileName}..."
+msgstr "Subiendo {fileName}..."
+
+msgid "Uploaded {percent}%"
+msgstr "Subido {percent}%"
+
+msgid "Uploaded {percent} percent"
+msgstr "Subido {percent} por ciento"
+
+msgid "Upload complete, link copied to clipboard"
+msgstr "Subida completa, enlace copiado al portapapeles"
+
+msgid "Upload complete"
+msgstr "Subida completa"
+
+msgid "File uploaded"
+msgstr "Archivo subido"
+
+msgid "{fileName} uploaded - expires in {expiry}"
+msgstr "{fileName} subido - expira en {expiry}"
+
+msgid "Upload cancelled"
+msgstr "Subida cancelada"
+
+msgid "Show \"Record\" in the NVDA+alt+o menu"
+msgstr "Mostrar \"Grabar\" en el menú de NVDA+alt+o"
+
+msgid "Show \"Background recording\" in the NVDA+alt+o menu"
+msgstr "Mostrar \"Grabación en segundo plano\" en el menú de NVDA+alt+o"
+
+msgid "Show \"History\" in the NVDA+alt+o menu"
+msgstr "Mostrar \"Historial\" en el menú de NVDA+alt+o"
