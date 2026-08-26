@@ -9,9 +9,9 @@ Everything starts from one shortcut: **NVDA+alt+o**. It opens a menu with:
 - **&Upload a file** — choose a file from disk, then pick an upload host and expiry.
 - **&Record** — record a new clip (microphone, computer audio, or both), then pick an upload host and expiry.
 - **&Background recording** — starts a headless recording with no window (uses your default source and devices). Press NVDA+alt+o again (no need to open the menu) to stop it and open the usual record dialog to preview, edit, and upload.
-- **&History** — browse your upload history. Enter opens Copy/Open/Delete options; Control+C copies the link directly; Delete removes an entry. Expired links drop off the list automatically.
+- **&History** — browse your upload history. The list shows each file, its host, how long it will remain there, and when it was uploaded. Unlimited retention is shown without a remaining-time value. Right-click or press Shift+F10 on an entry for a context menu containing **Copy link**. Enter still opens the existing Copy/Open/Delete options; Control+C copies the link directly; Delete removes an entry. Expired links drop off the list automatically.
 
-Each menu item's underlined letter (U, R, B, H) can be pressed directly once the menu is open, the same as any other Windows menu. Escape closes the menu without doing anything.
+Each menu item's underlined letter (U, R, B, H) can be pressed directly once the menu is open, the same as any other Windows menu. Upload History is also available under **NVDA menu → Tools → Cloud Uploader history**. Escape closes the menu without doing anything.
 
 Only one shortcut is assigned by default, to avoid clashing with NVDA's own commands or other add-ons. Every menu item can also be reached as its own separately-assignable command from NVDA's Input Gestures dialog (NVDA+N → Preferences → Input gestures → Cloud Uploader) — including "Record" on its own, for a direct recording shortcut without opening the menu first.
 
