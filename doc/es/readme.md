@@ -9,9 +9,9 @@ Todo comienza con un solo atajo: **NVDA+alt+o**. Se abre un menú con estas opci
 - **&Subir un archivo** — elige un archivo del disco y luego selecciona el servidor y el tiempo de expiración.
 - **&Grabar** — graba un clip nuevo (micrófono, audio de la computadora, o ambos) y luego selecciona servidor y expiración.
 - **&Grabación en segundo plano** — inicia una grabación sin abrir ninguna ventana (usa tu fuente y dispositivos predeterminados). Presiona NVDA+alt+o de nuevo para detenerla; se abrirá el cuadro de grabación habitual, donde podrás escuchar, editar y subir.
-- **&Historial** — consulta todo lo que has subido. Enter muestra las opciones de Copiar, Abrir o Eliminar; Control+C copia el enlace directamente; Suprimir elimina una entrada. Los enlaces vencidos se quitan automáticamente de la lista.
+- **&Historial** — consulta todo lo que has subido. La lista muestra cada archivo, su servidor, cuánto tiempo se conservará allí y cuándo se subió. Para el almacenamiento ilimitado no se muestra un tiempo de retención. Haz clic derecho o presiona Shift+F10 sobre una entrada para abrir un menú contextual que solo contiene **Copiar enlace**. Enter mantiene las opciones existentes de Copiar, Abrir o Eliminar; Control+C copia el enlace directamente; Suprimir elimina una entrada. Los enlaces vencidos se quitan automáticamente de la lista.
 
-Una vez abierto el menú, puedes ir directo a cualquier opción con su letra subrayada (U, R, B, H), igual que en cualquier otro menú de Windows. Escape lo cierra sin hacer nada.
+Una vez abierto el menú, puedes ir directo a cualquier opción con su letra subrayada (U, R, B, H), igual que en cualquier otro menú de Windows. El Historial de subidas también está disponible en **Menú de NVDA → Herramientas → Historial de Cloud Uploader**. Escape lo cierra sin hacer nada.
 
 Solo NVDA+alt+o viene asignado de forma predeterminada, para evitar conflictos con los comandos de NVDA o de otros complementos. Sin embargo, cada opción del menú también puede asignarse como atajo independiente desde el cuadro de diálogo de gestos de entrada de NVDA (NVDA+N → Preferencias → Gestos de entrada → Cloud Uploader), incluyendo "Grabar" por sí solo, para ir directo a grabar sin pasar por el menú.
 

@@ -140,7 +140,7 @@ GOFILE_EXPIRY_OPTIONS = [
 
 # (spoken label, catbox expiry code (unused - catbox.moe permanent uploads don't expire), seconds)
 CATBOX_EXPIRY_OPTIONS = [
-	(_("Permanent, kept indefinitely"), None, 3650 * 24 * 3600),
+	(_("Permanent, kept indefinitely"), None, None),
 ]
 # (spoken label, 0x0.st expiry code (unused, kept for interface consistency), seconds)
 # 0x0.st's actual policy: retention scales with file size, from 30 days
@@ -1818,7 +1818,10 @@ def _loadHistory():
 		with open(path, "r", encoding="utf-8") as f:
 			data = json.load(f)
 		if isinstance(data, list):
-			return data
+			normalized, changed = _normalizeHistory(data)
+			if changed:
+				_saveHistory(normalized)
+			return normalized
 	except FileNotFoundError:
 		pass
 	except Exception:
@@ -1841,10 +1844,75 @@ def _saveHistory(history):
 		log.error("Cloud Uploader: could not save link history")
 
 
+def _inferHistoryHostKey(link):
+	try:
+		hostname = (urllib.parse.urlparse(link).hostname or "").lower()
+	except Exception:
+		return None
+	if hostname == "litterbox.catbox.moe":
+		return "litterbox"
+	if hostname == "catbox.moe" or hostname.endswith(".catbox.moe"):
+		return "catbox"
+	if hostname == "gofile.io" or hostname == "upload.gofile.io" or hostname.endswith(".gofile.io"):
+		return "gofile"
+	if hostname == "0x0.st":
+		return "0x0"
+	if hostname == "filebin.net" or hostname.endswith(".filebin.net"):
+		return "filebin"
+	if hostname == "uguu.se" or hostname.endswith(".uguu.se"):
+		return "uguu"
+	return None
+
+
+def _normalizeHistory(history):
+	"""Adds host and retention metadata to entries written by older versions.
+	Unknown entries are retained unchanged so migration can never discard a
+	link merely because its host is no longer recognized."""
+	changed = False
+	normalized = []
+	for rawEntry in history:
+		if not isinstance(rawEntry, dict):
+			normalized.append(rawEntry)
+			continue
+		entry = dict(rawEntry)
+		hostKey = entry.get("hostKey") or _inferHistoryHostKey(entry.get("link", ""))
+		host = HOSTS_BY_KEY.get(hostKey) if hostKey else None
+		if hostKey and entry.get("hostKey") != hostKey:
+			entry["hostKey"] = hostKey
+			changed = True
+		if host is not None:
+			if not entry.get("hostLabel"):
+				entry["hostLabel"] = host.historyLabel
+				changed = True
+			if "retentionLabel" not in entry:
+				entry["retentionLabel"] = entry.get("expiryLabel", "")
+				changed = True
+			if host.unlimitedRetention:
+				if entry.get("expiresAt") is not None or entry.get("retentionSeconds") is not None:
+					entry["expiresAt"] = None
+					entry["retentionSeconds"] = None
+					changed = True
+			elif "retentionSeconds" not in entry:
+				try:
+					uploadedAt = datetime.datetime.fromisoformat(entry["uploadedAt"])
+					expiresAt = datetime.datetime.fromisoformat(entry["expiresAt"])
+					entry["retentionSeconds"] = max(0, int((expiresAt - uploadedAt).total_seconds()))
+					changed = True
+				except Exception:
+					pass
+		normalized.append(entry)
+	return normalized, changed
+
+
 def _pruneExpired(history):
 	now = datetime.datetime.now()
 	kept = []
 	for entry in history:
+		# None explicitly means unlimited retention. Missing or malformed
+		# timestamps are preserved for backwards compatibility.
+		if not isinstance(entry, dict) or entry.get("expiresAt") is None:
+			kept.append(entry)
+			continue
 		try:
 			if datetime.datetime.fromisoformat(entry["expiresAt"]) > now:
 				kept.append(entry)
@@ -1870,7 +1938,18 @@ def _formatSince(pastIso, now):
 	return _("{n} d ago").format(n=days)
 
 
+def _getHistoryRetentionLabel(entry):
+	if not isinstance(entry, dict):
+		return ""
+	host = HOSTS_BY_KEY.get(entry.get("hostKey"))
+	if host is not None and host.unlimitedRetention:
+		return ""
+	return entry.get("retentionLabel") or entry.get("expiryLabel") or ""
+
+
 def _formatUntil(futureIso, now):
+	if futureIso is None:
+		return ""
 	try:
 		seconds = (datetime.datetime.fromisoformat(futureIso) - now).total_seconds()
 	except Exception:
@@ -2395,6 +2474,8 @@ class UploadHost(object):
 
 	key = ""
 	label = ""
+	historyLabel = ""
+	unlimitedRetention = False
 	expiryOptions = []
 	checkHost = ""
 	checkPath = "/"
@@ -2409,6 +2490,7 @@ class UploadHost(object):
 class LitterboxHost(UploadHost):
 	key = "litterbox"
 	label = _("Litterbox (catbox.moe) - kept 1 hour to 3 days depending on your choice, but renames your file")
+	historyLabel = _("Litterbox")
 	expiryOptions = EXPIRY_OPTIONS
 	checkHost = "litterbox.catbox.moe"
 
@@ -2419,6 +2501,7 @@ class LitterboxHost(UploadHost):
 class GofileHost(UploadHost):
 	key = "gofile"
 	label = _("Gofile - keeps your original file name on a download page, kept about 10 days")
+	historyLabel = _("Gofile")
 	expiryOptions = GOFILE_EXPIRY_OPTIONS
 	checkHost = "upload.gofile.io"
 
@@ -2429,6 +2512,8 @@ class GofileHost(UploadHost):
 class CatboxHost(UploadHost):
 	key = "catbox"
 	label = _("Catbox (catbox.moe) - permanent storage, but renames your file")
+	historyLabel = _("Catbox")
+	unlimitedRetention = True
 	expiryOptions = CATBOX_EXPIRY_OPTIONS
 	checkHost = "catbox.moe"
 
@@ -2439,6 +2524,7 @@ class CatboxHost(UploadHost):
 class ZeroXZeroHost(UploadHost):
 	key = "0x0"
 	label = _("0x0.st - kept 30 days to 1 year depending on file size, but renames your file")
+	historyLabel = _("0x0.st")
 	expiryOptions = ZEROXZERO_EXPIRY_OPTIONS
 	checkHost = "0x0.st"
 
@@ -2449,6 +2535,7 @@ class ZeroXZeroHost(UploadHost):
 class FilebinHost(UploadHost):
 	key = "filebin"
 	label = _("Filebin - keeps your original file name, but not a direct download link, expires in about 6 days")
+	historyLabel = _("Filebin")
 	expiryOptions = FILEBIN_EXPIRY_OPTIONS
 	checkHost = "filebin.net"
 
@@ -2459,6 +2546,7 @@ class FilebinHost(UploadHost):
 class UguuHost(UploadHost):
 	key = "uguu"
 	label = _("Uguu - temporary storage, about 48 hours, renames your file")
+	historyLabel = _("Uguu")
 	expiryOptions = UGUU_EXPIRY_OPTIONS
 	checkHost = "uguu.se"
 
@@ -2705,22 +2793,24 @@ class LinkDialog(wx.Dialog):
 
 class LinkHistoryDialog(wx.Dialog):
 	def __init__(self, parent, history, onChange):
-		super().__init__(parent, title=_("Upload history"), size=(520, 350))
+		super().__init__(parent, title=_("Upload history"), size=(650, 350))
 		self.history = history
 		self.onChange = onChange
 
 		mainSizer = wx.BoxSizer(wx.VERTICAL)
-		hint = _("Enter for options, control+C to copy, delete to remove. Most recent first.") if history else _("You haven't uploaded any files yet.")
+		hint = _("Right-click or press Shift+F10 for link actions. Most recent first.") if history else _("You haven't uploaded any files yet.")
 		mainSizer.Add(wx.StaticText(self, label=hint), flag=wx.ALL, border=10)
 
 		self.listCtrl = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
 		self.listCtrl.InsertColumn(0, _("File"), width=220)
-		self.listCtrl.InsertColumn(1, _("Expires"), width=140)
-		self.listCtrl.InsertColumn(2, _("Uploaded"), width=140)
+		self.listCtrl.InsertColumn(1, _("Host"), width=110)
+		self.listCtrl.InsertColumn(2, _("Retention"), width=230)
+		self.listCtrl.InsertColumn(3, _("Uploaded"), width=140)
 		self._populateList()
 		mainSizer.Add(self.listCtrl, proportion=1, flag=wx.LEFT | wx.RIGHT | wx.EXPAND, border=10)
 		self.listCtrl.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.onActivate)
 		self.listCtrl.Bind(wx.EVT_KEY_DOWN, self.onKeyDown)
+		self.listCtrl.Bind(wx.EVT_CONTEXT_MENU, self.onContextMenu)
 
 		closeBtn = wx.Button(self, label=_("Clos&e"))
 		closeBtn.Bind(wx.EVT_BUTTON, self.onClose)
@@ -2748,12 +2838,13 @@ class LinkHistoryDialog(wx.Dialog):
 		now = datetime.datetime.now()
 		for entry in self.history:
 			index = self.listCtrl.InsertItem(self.listCtrl.GetItemCount(), entry.get("fileName", ""))
-			self.listCtrl.SetItem(index, 1, _formatUntil(entry.get("expiresAt", ""), now))
-			self.listCtrl.SetItem(index, 2, _formatSince(entry.get("uploadedAt", ""), now))
+			self.listCtrl.SetItem(index, 1, entry.get("hostLabel", ""))
+			self.listCtrl.SetItem(index, 2, _getHistoryRetentionLabel(entry))
+			self.listCtrl.SetItem(index, 3, _formatSince(entry.get("uploadedAt", ""), now))
 
-	def _getSelectedIndex(self):
+	def _getSelectedIndex(self, notify=True):
 		index = self.listCtrl.GetFirstSelected()
-		if index == -1:
+		if index == -1 and notify:
 			ui.message(_("Please select an item first"))
 		return index
 
@@ -2764,23 +2855,53 @@ class LinkHistoryDialog(wx.Dialog):
 		self.onChange(self.history)
 		ui.message(_("Removed {fileName}").format(fileName=fileName))
 
+	def _copySelectedLink(self):
+		index = self._getSelectedIndex()
+		if index != -1:
+			api.copyToClip(self.history[index].get("link", ""), notify=True)
+
+	def _showContextMenu(self, position):
+		index = self._getSelectedIndex(notify=False)
+		if index == -1:
+			return
+		menu = wx.Menu()
+		copyItem = menu.Append(wx.ID_ANY, _("&Copy link"))
+		self.Bind(wx.EVT_MENU, lambda evt: self._copySelectedLink(), copyItem)
+		try:
+			self.listCtrl.PopupMenu(menu, position)
+		finally:
+			menu.Destroy()
+
+	def onContextMenu(self, evt):
+		position = evt.GetPosition()
+		if position != wx.DefaultPosition:
+			position = self.listCtrl.ScreenToClient(position)
+			item, _flags = self.listCtrl.HitTest(position)
+			if item < 0:
+				return
+			self.listCtrl.Select(item)
+			self.listCtrl.Focus(item)
+		self._showContextMenu(position)
+
 	def onActivate(self, evt):
 		index = evt.GetIndex()
 		if not (0 <= index < len(self.history)):
 			return
 		entry = self.history[index]
 		now = datetime.datetime.now()
+		until = _formatUntil(entry.get("expiresAt"), now)
+		retention = _("kept indefinitely") if not until else _("expires {until}").format(until=until)
 		gui.mainFrame.prePopup()
 		try:
 			dlg = LinkDialog(
 				self,
 				_("Link options"),
-				_("{fileName} - {since}, expires {until}").format(
+				_("{fileName} - {since}, {retention}").format(
 					fileName=entry.get("fileName", ""),
 					since=_formatSince(entry.get("uploadedAt", ""), now),
-					until=_formatUntil(entry.get("expiresAt", ""), now),
+					retention=retention,
 				),
-				entry["link"],
+				entry.get("link", ""),
 				showDelete=True,
 				onDelete=lambda: self._removeAt(index),
 			)
@@ -2796,9 +2917,9 @@ class LinkHistoryDialog(wx.Dialog):
 			if index != -1:
 				self._removeAt(index)
 		elif evt.ControlDown() and keyCode == ord("C"):
-			index = self._getSelectedIndex()
-			if index != -1:
-				api.copyToClip(self.history[index]["link"], notify=True)
+			self._copySelectedLink()
+		elif keyCode == wx.WXK_F10 and evt.ShiftDown():
+			self._showContextMenu(wx.DefaultPosition)
 		else:
 			evt.Skip()
 
@@ -4696,6 +4817,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._selectionDialog = None
 		self._historyDialog = None
 		self._menuOpen = False
+		self._toolsMenu = None
+		self._toolsHistoryItem = None
+		try:
+			self._toolsMenu = gui.mainFrame.sysTrayIcon.toolsMenu
+			self._toolsHistoryItem = self._toolsMenu.Append(wx.ID_ANY, _("Cloud Uploader &history"))
+			gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self._onToolsHistory, self._toolsHistoryItem)
+		except Exception:
+			log.error("Cloud Uploader: could not add Upload History to the NVDA Tools menu", exc_info=True)
 		self._pendingUploadPaths = []
 		self._deleteAfterUploadFlag = False
 		# Headless background recording, reachable via the NVDA+alt+o menu
@@ -4748,6 +4877,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			log.error("Cloud Uploader: could not show terms dialog", exc_info=True)
 
 	def terminate(self):
+		try:
+			if self._toolsMenu is not None and self._toolsHistoryItem is not None:
+				self._toolsMenu.Remove(self._toolsHistoryItem.GetId())
+		except Exception:
+			pass
 		try:
 			if self._bgRecording or self._bgMicRecorder is not None or self._bgSysRecorder is not None:
 				self._abortBackgroundRecording()
@@ -4848,6 +4982,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		wx.CallAfter(self._showRecordDialog)
 
 	def _onMenuHistory(self):
+		wx.CallAfter(self._showLinkHistory)
+
+	def _onToolsHistory(self, evt):
+		if not self._termsAccepted():
+			ui.message(_("Please accept the Cloud Uploader terms of service first. Restart NVDA to see the notice again."))
+			return
+		if self._historyDialog is not None:
+			self._focusExistingDialog(self._historyDialog)
+			ui.message(_("The upload history window is already open"))
+			return
 		wx.CallAfter(self._showLinkHistory)
 
 	def _onMenuBackground(self):
@@ -5436,13 +5580,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._closeProgressDialog()
 		self._uploading = False
 		now = datetime.datetime.now()
-		expiresAt = now + datetime.timedelta(seconds=self._expirySeconds)
+		expiresAt = None
+		if self._expirySeconds is not None:
+			expiresAt = (now + datetime.timedelta(seconds=self._expirySeconds)).isoformat()
 		entry = {
 			"fileName": self._currentFileName or "",
 			"link": link,
+			"hostKey": self._currentHost.key if self._currentHost else "",
+			"hostLabel": self._currentHost.historyLabel if self._currentHost else "",
+			"retentionLabel": self._expiryLabel or "",
 			"expiryLabel": self._expiryLabel or "",
+			"retentionSeconds": self._expirySeconds,
 			"uploadedAt": now.isoformat(),
-			"expiresAt": expiresAt.isoformat(),
+			"expiresAt": expiresAt,
 		}
 		self._history.insert(0, entry)
 		self._history = self._history[:_getMaxHistoryEntries()]
@@ -5477,7 +5627,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			dlg = LinkDialog(
 				gui.mainFrame,
 				_("File uploaded"),
-				_("{fileName} uploaded - expires in {expiry}").format(fileName=fileName, expiry=self._expiryLabel),
+				_("{fileName} uploaded - {retention}").format(
+					fileName=fileName,
+					retention=(
+						_("kept indefinitely") if self._expirySeconds is None
+						else _("expires in {expiry}").format(expiry=self._expiryLabel)
+					),
+				),
 				link,
 			)
 			dlg.ShowModal()

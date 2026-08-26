@@ -262,6 +262,12 @@ msgid "Upload history"
 msgstr "Historial de subidas"
 
 msgid ""
+"Right-click or press Shift+F10 for link actions. Most recent first."
+msgstr ""
+"Haz clic derecho o presiona Shift+F10 para ver las acciones del enlace. Los "
+"más recientes primero."
+
+msgid ""
 "Enter for options, control+C to copy, delete to remove. Most recent first."
 msgstr ""
 "Enter para opciones, control+C para copiar, suprimir para eliminar. Los más "
@@ -272,6 +278,12 @@ msgstr "Aún no has subido ningún archivo."
 
 msgid "File"
 msgstr "Archivo"
+
+msgid "Host"
+msgstr "Servidor"
+
+msgid "Retention"
+msgstr "Retención"
 
 msgid "Expires"
 msgstr "Expira"
@@ -290,6 +302,17 @@ msgstr "Opciones del enlace"
 
 msgid "{fileName} - {since}, expires {until}"
 msgstr "{fileName} - {since}, expira {until}"
+
+msgid ""
+"{fileName} - {since}, {retention}"
+msgstr ""
+"{fileName} - {since}, {retention}"
+
+msgid "kept indefinitely"
+msgstr "se conserva indefinidamente"
+
+msgid "expires {until}"
+msgstr "expira {until}"
 
 msgid "Elapsed time: 0:00"
 msgstr "Tiempo transcurrido: 0:00"
@@ -851,6 +874,12 @@ msgstr "Archivo subido"
 msgid "{fileName} uploaded - expires in {expiry}"
 msgstr "{fileName} subido - expira en {expiry}"
 
+msgid "{fileName} uploaded - {retention}"
+msgstr "{fileName} subido - {retention}"
+
+msgid "expires in {expiry}"
+msgstr "expira en {expiry}"
+
 msgid "Upload cancelled"
 msgstr "Subida cancelada"
 
@@ -862,3 +891,24 @@ msgstr "Mostrar \"Grabación en segundo plano\" en el menú de NVDA+alt+o"
 
 msgid "Show \"History\" in the NVDA+alt+o menu"
 msgstr "Mostrar \"Historial\" en el menú de NVDA+alt+o"
+
+msgid "Litterbox"
+msgstr "Litterbox"
+
+msgid "Gofile"
+msgstr "Gofile"
+
+msgid "Catbox"
+msgstr "Catbox"
+
+msgid "0x0.st"
+msgstr "0x0.st"
+
+msgid "Filebin"
+msgstr "Filebin"
+
+msgid "Uguu"
+msgstr "Uguu"
+
+msgid "Cloud Uploader &history"
+msgstr "Historial de &Cloud Uploader"
