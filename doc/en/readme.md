@@ -30,9 +30,10 @@ Files are uploaded anonymously to whichever host you pick:
 | Litterbox (catbox.moe) | Direct download | 1 hour–3 days, your choice |
 | Gofile | Download page | ~10 days |
 | Catbox (catbox.moe) | Direct download | Permanent |
-| 0x0.st | Direct download | 30 days–1 year, depending on size |
 | Filebin | Download page | ~6 days |
 | Uguu | Direct download | ~48 hours |
+| Buzzheavier | Download page (not a direct link) | 15 days, +3 days per download, up to 45 |
+| x0.at | Direct download | 3–100 days, depending on file size |
 
 ## Terms of service and acceptable use
 
@@ -40,9 +41,9 @@ Files are uploaded anonymously to whichever host you pick:
 
 - **Litterbox / Catbox** (catbox.moe): Catbox caps files at 200 MB; Litterbox (temporary) allows up to 1 GB. Both disallow `.exe`, `.scr`, `.cpl`, `.doc*`, and `.jar` files, and ban child sexual abuse material, malware, full pirated TV/anime episodes, and heavy gore. Commercial use (e.g. as a CDN or ecommerce image host) requires prior approval. Violations result in the file being deleted and **your IP address being blacklisted** from the service.
 - **Gofile**: No officially published per-file size limit, but free accounts have a traffic allowance (historically around 100 GB/month) and are rate-limited per endpoint — exceeding limits can return errors or trigger a **temporary IP block**. Free-tier files are generally kept around 10 days unless downloaded; content that violates their terms may be removed and accounts restricted.
-- **0x0.st**: 512 MiB max file size. Its terms explicitly prohibit piracy, pornography/gore, extremist or terrorist material, malware or botnet infrastructure, doxxing or personal-data dumps, AI-generated spam ("AI slop"), automated mass uploads, and anything illegal under German law (the host's jurisdiction). Violations get the file removed and **may block your IP** from further uploads.
 - **Filebin**: No fixed per-file size cap, but the service has an overall storage capacity limit and will reject new uploads when it's full. IP addresses are logged for abuse handling and **may be shared with law enforcement on request**; IPs found uploading malicious content are blocked. Content is not automatically moderated, but is expected to comply with the terms (no illegal, copyrighted, or malicious material).
 - **Uguu**: 128 MiB max file size on the official instance, with a short automatic expiry (a few hours to a few days). Malware is explicitly disallowed. Copyright takedowns go through abuse@pomf.se.
+- **Buzzheavier**: no fixed file size limit, and it keeps your original file name. Free files start at 15 days and each download adds 3 days (up to 45). The link Cloud Uploader gives you opens a download page, which has the direct link on it. **x0.at**: 1 GiB max file size, direct link, keeps your file name (cleaned up), and keeps files 3 to 100 days depending on their size. Both are free, independently-operated services with their own rules against abuse; violations can get files removed and **your IP blocked**. There is no way to choose how long a file is kept on either of them.
 
 **In short:** stick to reasonable, legal content and reasonable file sizes, and don't rely on any of these hosts for anything sensitive, permanent, or high-volume. If a host blocks your IP for a terms violation, that block is enforced by the host itself — this add-on has no way to appeal it or work around it for you.
 
@@ -50,7 +51,7 @@ A short summary of this notice is shown, in a dialog, the first time NVDA starts
 
 ## Settings
 
-Available under NVDA+control+g → Cloud Uploader: a default host, auto-copy on upload, history size, recording options (format, quality, device, channels, auto-start recording, ffmpeg path), and which items show up in the NVDA+alt+o menu.
+Available under NVDA+control+g → Cloud Uploader: a default host, auto-copy on upload, history size, recording options (format, quality, device, channels, auto-start recording, ffmpeg path), which items show up in the NVDA+alt+o menu, and a "View debug log" button showing Cloud Uploader's own recent log lines - useful for troubleshooting or reporting a bug, without digging through NVDA's full log.
 
 ## Notes
 

@@ -11,26 +11,6 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-msgid ""
-"Cloud Uploader sends files to free, independently-operated third-party hosts (Litterbox, Catbox, Gofile, 0x0.st, Filebin, and Uguu), not a service run by this add-on. Each host has its own file size limits, content rules, and retention time, and violating a host's rules can get your uploads deleted and your IP address blocked from that host.\n"
-"\n"
-"In short: only upload content you have the right to share, that is legal, and that is reasonably sized. Do not rely on any of these hosts for anything sensitive, permanent, or high-volume.\n"
-"\n"
-"Full details for each host, including exact size limits and banned content, are in this add-on's documentation (NVDA menu > Help > Add-on Help, or the readme in the add-on's folder)."
-msgstr ""
-"Cloud Uploader envía archivos a servidores gratuitos e independientes "
-"(Litterbox, Catbox, Gofile, 0x0.st, Filebin y Uguu), no a un servicio "
-"operado por este complemento. Cada servidor tiene sus propios límites de "
-"tamaño, reglas de contenido y tiempo de retención, y violar las reglas de un"
-" servidor puede hacer que borren tus archivos y bloqueen tu dirección "
-"IP.\\n\\nEn resumen: sube solo contenido que tengas derecho a compartir, que"
-" sea legal, y de tamaño razonable. No dependas de ninguno de estos "
-"servidores para nada sensible, permanente o de gran volumen.\\n\\nLos "
-"detalles completos de cada servidor, incluyendo límites exactos y contenido "
-"prohibido, están en la documentación de este complemento (menú de NVDA > "
-"Ayuda > Ayuda del complemento, o el archivo readme en la carpeta del "
-"complemento)."
-
 msgid "MP3"
 msgstr "MP3"
 
@@ -188,13 +168,6 @@ msgstr ""
 "Catbox (catbox.moe): almacenamiento permanente, pero renombra tu archivo"
 
 msgid ""
-"0x0.st - kept 30 days to 1 year depending on file size, but renames your "
-"file"
-msgstr ""
-"0x0.st: se conserva de 30 días a 1 año según el tamaño del archivo, pero "
-"renombra tu archivo"
-
-msgid ""
 "Filebin - keeps your original file name, but not a direct download link, "
 "expires in about 6 days"
 msgstr ""
@@ -211,10 +184,10 @@ msgid "Which host should this file be uploaded to?"
 msgstr "¿A qué servidor se debe subir este archivo?"
 
 msgid "&Check server status"
-msgstr "Verificar estado del servidor (&C)"
+msgstr "&Verificar estado del servidor"
 
 msgid "&OK"
-msgstr "Aceptar (&O)"
+msgstr "&Aceptar"
 
 msgid "Cancel"
 msgstr "Cancelar"
@@ -235,25 +208,25 @@ msgid "Upload failed"
 msgstr "La subida falló"
 
 msgid "&Retry the same host"
-msgstr "Reintentar con el mismo servidor (&R)"
+msgstr "&Reintentar con el mismo servidor"
 
 msgid "&Choose another host"
-msgstr "Elegir otro servidor (&C)"
+msgstr "&Elegir otro servidor"
 
 msgid "&Cancel upload"
-msgstr "Cancelar subida (&C)"
+msgstr "&Cancelar subida"
 
 msgid "&Copy link"
-msgstr "Copiar enlace (&C)"
+msgstr "&Copiar enlace"
 
 msgid "&Open in browser"
-msgstr "Abrir en el navegador (&O)"
+msgstr "&Abrir en el navegador"
 
 msgid "&Delete"
-msgstr "Eliminar (&D)"
+msgstr "&Eliminar"
 
 msgid "Clos&e"
-msgstr "Cerrar (&e)"
+msgstr "Cerra&r"
 
 msgid "Opening link in your browser"
 msgstr "Abriendo el enlace en tu navegador"
@@ -324,16 +297,16 @@ msgid "Save these settings for future recordings"
 msgstr "Guardar esta configuración para futuras grabaciones"
 
 msgid "&Record"
-msgstr "Grabar (&R)"
+msgstr "&Grabar"
 
 msgid "&Preview"
-msgstr "Previsualizar (&P)"
+msgstr "&Previsualizar"
 
 msgid "Re&move recording"
-msgstr "Eliminar grabación (&m)"
+msgstr "Eli&minar grabación"
 
 msgid "R&ename recording"
-msgstr "Renombrar grabación (&e)"
+msgstr "&Renombrar grabación"
 
 msgid "Silence removal (microphone only):"
 msgstr "Eliminación de silencios (solo micrófono):"
@@ -345,16 +318,16 @@ msgid "Aggressive"
 msgstr "Agresiva"
 
 msgid "Remove si&lence"
-msgstr "Eliminar silencios (&l)"
+msgstr "Eliminar si&lencios"
 
 msgid "Noise reduction sensitivity (microphone only):"
 msgstr "Sensibilidad de reducción de ruido (solo micrófono):"
 
 msgid "Re&duce noise"
-msgstr "Reducir ruido (&d)"
+msgstr "Reducir ru&ido"
 
 msgid "&Normalize volume"
-msgstr "Normalizar volumen (&N)"
+msgstr "&Normalizar volumen"
 
 msgid "Undo (Ctrl+Z)"
 msgstr "Deshacer (Ctrl+Z)"
@@ -369,13 +342,13 @@ msgid "Computer audio volume:"
 msgstr "Volumen del audio de la computadora:"
 
 msgid "Upload and Sa&ve"
-msgstr "Subir y guardar (&v)"
+msgstr "S&ubir y guardar"
 
 msgid "Upload &Without Saving"
-msgstr "Subir sin guardar (&W)"
+msgstr "&Subir sin guardar"
 
 msgid "&Keep Without Uploading"
-msgstr "Conservar sin subir (&K)"
+msgstr "&Conservar sin subir"
 
 msgid "Could not load the recording: {error}"
 msgstr "No se pudo cargar la grabación: {error}"
@@ -390,7 +363,7 @@ msgid "Could not start recording: {error}"
 msgstr "No se pudo iniciar la grabación: {error}"
 
 msgid "&Stop"
-msgstr "Detener (&S)"
+msgstr "&Detener"
 
 msgid "Recording... 0:00"
 msgstr "Grabando... 0:00"
@@ -425,7 +398,7 @@ msgid "Could not save the recording: {error}"
 msgstr "No se pudo guardar la grabación: {error}"
 
 msgid "&Record again"
-msgstr "Grabar de nuevo (&R)"
+msgstr "&Grabar de nuevo"
 
 msgid "Recording complete, length {m}:{s:02d}"
 msgstr "Grabación completa, duración {m}:{s:02d}"
@@ -545,7 +518,7 @@ msgid "Could not play preview"
 msgstr "No se pudo reproducir la vista previa"
 
 msgid "&Stop preview"
-msgstr "Detener vista previa (&v)"
+msgstr "Detener vista pre&via"
 
 msgid "Playing preview"
 msgstr "Reproduciendo vista previa"
@@ -633,16 +606,16 @@ msgid "Recordings stored on this device"
 msgstr "Grabaciones almacenadas en este dispositivo"
 
 msgid "&Open recordings folder"
-msgstr "Abrir carpeta de grabaciones (&O)"
+msgstr "&Abrir carpeta de grabaciones"
 
 msgid "&Clear all recordings"
-msgstr "Borrar todas las grabaciones (&C)"
+msgstr "&Borrar todas las grabaciones"
 
 msgid "Other"
 msgstr "Otro"
 
 msgid "&Donate to support development"
-msgstr "Donar para apoyar el desarrollo (&D)"
+msgstr "&Donar para apoyar el desarrollo"
 
 msgid "Could not open the recordings folder: {error}"
 msgstr "No se pudo abrir la carpeta de grabaciones: {error}"
@@ -668,10 +641,10 @@ msgid "I have read and understand the above"
 msgstr "He leído y entiendo lo anterior"
 
 msgid "&Agree"
-msgstr "Aceptar (&A)"
+msgstr "&Aceptar"
 
 msgid "&Disagree"
-msgstr "Rechazar (&D)"
+msgstr "&Rechazar"
 
 msgid ""
 "Please accept the Cloud Uploader terms of service first. Restart NVDA to see"
@@ -707,13 +680,13 @@ msgstr ""
 "elemento."
 
 msgid "&Upload a file"
-msgstr "Subir un archivo (&U)"
+msgstr "&Subir un archivo"
 
 msgid "&Background recording"
-msgstr "Grabación en segundo plano (&B)"
+msgstr "Grabación en segundo &plano"
 
 msgid "&History"
-msgstr "Historial (&H)"
+msgstr "&Historial"
 
 msgid "NVDA+alt+o menu"
 msgstr "Menú de NVDA+alt+o"
@@ -862,3 +835,108 @@ msgstr "Mostrar \"Grabación en segundo plano\" en el menú de NVDA+alt+o"
 
 msgid "Show \"History\" in the NVDA+alt+o menu"
 msgstr "Mostrar \"Historial\" en el menú de NVDA+alt+o"
+
+msgid "&View debug log"
+msgstr "&Ver registro de depuración"
+
+msgid "Cloud Uploader debug log"
+msgstr "Registro de depuración de Cloud Uploader"
+
+msgid "&Copy to clipboard"
+msgstr "&Copiar al portapapeles"
+
+msgid "C&lear log"
+msgstr "&Borrar registro"
+
+msgid "No Cloud Uploader log entries yet this session."
+msgstr "Aún no hay entradas de registro de Cloud Uploader en esta sesión."
+
+msgid "Debug log cleared"
+msgstr "Registro de depuración borrado"
+
+msgid ""
+"Exclude NVDA from computer audio (keeps NVDA speaking; recording omits NVDA "
+"audio)"
+msgstr ""
+"Excluir NVDA del audio de la computadora (NVDA sigue hablando; la grabación "
+"omite el audio de NVDA)"
+
+msgid ""
+"Exclude NVDA from computer audio by default (keeps NVDA speaking; recording "
+"omits NVDA audio)"
+msgstr ""
+"Excluir NVDA del audio de la computadora de forma predeterminada (NVDA sigue"
+" hablando; la grabación omite el audio de NVDA)"
+
+msgid "Now recording (NVDA audio excluded from capture)"
+msgstr "Grabando ahora (audio de NVDA excluido de la captura)"
+
+msgid ""
+"Now recording. Could not exclude NVDA from computer audio (process loopback "
+"unavailable); NVDA will be included in the recording."
+msgstr ""
+"Grabando ahora. No se pudo excluir NVDA del audio de la computadora (bucle "
+"de proceso no disponible); NVDA se incluirá en la grabación."
+
+msgid ""
+"Background recording started (NVDA audio excluded). Press NVDA+alt+o again "
+"to stop."
+msgstr ""
+"Grabación en segundo plano iniciada (audio de NVDA excluido). Pulsa "
+"NVDA+alt+o de nuevo para detenerla."
+
+msgid ""
+"Background recording started. Could not exclude NVDA from computer audio; "
+"NVDA will be included. Press NVDA+alt+o again to stop."
+msgstr ""
+"Grabación en segundo plano iniciada. No se pudo excluir NVDA del audio de la"
+" computadora; NVDA se incluirá. Pulsa NVDA+alt+o de nuevo para detenerla."
+
+msgid ""
+"Start recording immediately when choosing \"Record a new voice clip\" (uses "
+"your default source, devices, and volumes; press Stop when finished)"
+msgstr ""
+"Iniciar la grabación de inmediato al elegir \"Grabar un nuevo clip de voz\" "
+"(usa la fuente, dispositivos y volúmenes predeterminados; pulsa Detener al "
+"terminar)"
+
+msgid ""
+"Cloud Uploader sends files to free, independently-operated third-party hosts (Litterbox, Catbox, Gofile, Filebin, Uguu, Buzzheavier, and x0.at), not a service run by this add-on. Each host has its own file size limits, content rules, and retention time, and violating a host's rules can get your uploads deleted and your IP address blocked from that host.\n"
+"\n"
+"In short: only upload content you have the right to share, that is legal, and that is reasonably sized. Do not rely on any of these hosts for anything sensitive, permanent, or high-volume.\n"
+"\n"
+"Full details for each host, including exact size limits and banned content, are in this add-on's documentation (NVDA menu > Help > Add-on Help, or the readme in the add-on's folder)."
+msgstr ""
+"Cloud Uploader envía archivos a servidores gratuitos e independientes (Litterbox, Catbox, Gofile, Filebin, Uguu, Buzzheavier y x0.at), no a un servicio operado por este complemento. Cada servidor tiene sus propios límites de tamaño, reglas de contenido y tiempo de retención, y violar las reglas de un servidor puede hacer que borren tus archivos y bloqueen tu dirección IP.\n"
+"\n"
+"En resumen: sube solo contenido que tengas derecho a compartir, que sea legal, y de tamaño razonable. No dependas de ninguno de estos servidores para nada sensible, permanente o de gran volumen.\n"
+"\n"
+"Los detalles completos de cada servidor, incluyendo límites exactos y contenido prohibido, están en la documentación de este complemento (menú de NVDA > Ayuda > Ayuda del complemento, o el archivo readme en la carpeta del complemento)."
+
+msgid ""
+"Default retention (starts at 15 days, each download adds 3 days, up to 45 "
+"days)"
+msgstr ""
+"Retención predeterminada (empieza en 15 días, cada descarga suma 3 días, "
+"hasta 45 días)"
+
+msgid ""
+"Depends on file size (3 to 100 days, larger files are kept for less time)"
+msgstr ""
+"Depende del tamaño del archivo (de 3 a 100 días, los archivos más grandes se"
+" conservan menos tiempo)"
+
+msgid ""
+"Buzzheavier - download page (not a direct link), keeps your original file "
+"name, kept 15 days and extended by downloads"
+msgstr ""
+"Buzzheavier: página de descarga (no es un enlace directo), mantiene el "
+"nombre original de tu archivo, se conserva 15 días y las descargas lo "
+"extienden"
+
+msgid ""
+"x0.at - direct download link, keeps your file name, kept 3 to 100 days "
+"depending on file size"
+msgstr ""
+"x0.at: enlace de descarga directa, mantiene el nombre de tu archivo, se "
+"conserva de 3 a 100 días según el tamaño"

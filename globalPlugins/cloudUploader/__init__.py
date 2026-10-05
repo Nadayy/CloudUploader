@@ -21,6 +21,8 @@ import subprocess
 import tempfile
 import array
 import cmath
+import logging
+import collections
 
 try:
 	# Stdlib audioop was removed in Python 3.13 (NVDA 2026.1+). Without it,
@@ -54,6 +56,36 @@ import ui
 import wx
 from logHandler import log
 
+# A rolling, in-memory copy of Cloud Uploader's own log lines, viewable and
+# copyable from Settings - much faster to hand over for debugging than
+# asking someone to dig the right lines out of NVDA's full log file.
+_debugLogBuffer = collections.deque(maxlen=300)
+
+
+class _CloudUploaderLogCapture(logging.Handler):
+	def emit(self, record):
+		try:
+			message = record.getMessage()
+		except Exception:
+			return
+		if "Cloud Uploader" not in message:
+			return
+		try:
+			timestamp = time.strftime("%H:%M:%S", time.localtime(record.created))
+			line = "%s [%s] %s" % (timestamp, record.levelname, message)
+			if record.exc_info:
+				import traceback
+				line += "\n" + "".join(traceback.format_exception(*record.exc_info))
+			_debugLogBuffer.append(line)
+		except Exception:
+			pass
+
+
+if not any(isinstance(h, _CloudUploaderLogCapture) for h in log.handlers):
+	_captureHandler = _CloudUploaderLogCapture()
+	_captureHandler.setLevel(logging.DEBUG)
+	log.addHandler(_captureHandler)
+
 addonHandler.initTranslation()
 
 UPLOAD_HOST = "litterbox.catbox.moe"
@@ -63,11 +95,12 @@ HISTORY_MAX_ENTRIES_DEFAULT = 50
 # Bump this only when the wording of TERMS_TEXT below meaningfully changes.
 # Everyone who already agreed will then see the notice again; a new add-on
 # version alone (new features, bug fixes) will NOT re-trigger it.
-TERMS_VERSION = "1"
+TERMS_VERSION = "2"
 
 TERMS_TEXT = _(
 	"Cloud Uploader sends files to free, independently-operated third-party "
-	"hosts (Litterbox, Catbox, Gofile, 0x0.st, Filebin, and Uguu), not a "
+	"hosts (Litterbox, Catbox, Gofile, Filebin, Uguu, Buzzheavier, and x0.at), "
+	"not a "
 	"service run by this add-on. Each host has its own file size limits, "
 	"content rules, and retention time, and violating a host's rules can get "
 	"your uploads deleted and your IP address blocked from that host.\n\n"
@@ -100,6 +133,7 @@ confspec = {
 	"saveSeparateTracks": "boolean(default=false)",
 	"micGainDb": "float(default=0.0, min=-20.0, max=20.0)",
 	"systemGainDb": "float(default=0.0, min=-20.0, max=20.0)",
+	"excludeNVDAAudio": "boolean(default=false)",
 	"termsAcceptedVersion": "string(default='')",
 }
 config.conf.spec["cloudUploader"] = confspec
@@ -117,6 +151,12 @@ RECORD_SOURCE_MODES = [
 	("computer", _("Computer audio only")),
 	("both", _("Microphone and computer audio")),
 ]
+
+# excludeNVDAAudio uses Windows process-loopback capture (Win10 20348+) so
+# system audio is recorded while excluding NVDA's process tree. NVDA keeps
+# speaking normally; only the recording omits it. Falls back to normal
+# loopback (which includes NVDA) on older Windows or if activation fails.
+
 
 # (quality key, spoken label, mp3 bitrate, ffmpeg sample rate, flac compression level)
 AUDIO_QUALITY_LEVELS = [
@@ -142,13 +182,6 @@ GOFILE_EXPIRY_OPTIONS = [
 CATBOX_EXPIRY_OPTIONS = [
 	(_("Permanent, kept indefinitely"), None, 3650 * 24 * 3600),
 ]
-# (spoken label, 0x0.st expiry code (unused, kept for interface consistency), seconds)
-# 0x0.st's actual policy: retention scales with file size, from 30 days
-# (at the 512 MiB size limit) up to 1 year (for very small files).
-ZEROXZERO_EXPIRY_OPTIONS = [
-	(_("At least 30 days, up to 1 year for smaller files (larger files are kept for less time)"), None, 30 * 24 * 3600),
-]
-
 # (spoken label, filebin expiry code (unused, kept for interface consistency), seconds)
 FILEBIN_EXPIRY_OPTIONS = [
 	(_("Default retention (about 6 days)"), None, 6 * 24 * 3600),
@@ -157,6 +190,15 @@ FILEBIN_EXPIRY_OPTIONS = [
 # (spoken label, uguu expiry code (unused, kept for interface consistency), seconds)
 UGUU_EXPIRY_OPTIONS = [
 	(_("Automatic (temporary storage, about 48 hours)"), None, 48 * 3600),
+]
+
+# (spoken label, expiry code (unused, kept for interface consistency), seconds)
+BUZZHEAVIER_EXPIRY_OPTIONS = [
+	(_("Default retention (starts at 15 days, each download adds 3 days, up to 45 days)"), None, 15 * 24 * 3600),
+]
+
+X0AT_EXPIRY_OPTIONS = [
+	(_("Depends on file size (3 to 100 days, larger files are kept for less time)"), None, 3 * 24 * 3600),
 ]
 
 
@@ -169,10 +211,68 @@ def _getHistoryFilePath():
 	return os.path.join(folder, "history.json")
 
 
+def _getMusicCloudUploaderFolder():
+	"""User-visible recordings live under Music/CloudUploader so they survive
+	addon updates (the old location under NVDA's config path is wiped or
+	orphaned when the add-on is replaced)."""
+	# FOLDERID_Music = {4BD8D571-6D19-48D3-BE97-422220080E43}
+	try:
+		class _GUID(ctypes.Structure):
+			_fields_ = [
+				("Data1", ctypes.c_uint32),
+				("Data2", ctypes.c_uint16),
+				("Data3", ctypes.c_uint16),
+				("Data4", ctypes.c_ubyte * 8),
+			]
+		# 4BD8D571-6D19-48D3-BE97-422220080E43
+		folder_id = _GUID(
+			0x4BD8D571, 0x6D19, 0x48D3,
+			(ctypes.c_ubyte * 8)(0xBE, 0x97, 0x42, 0x22, 0x20, 0x08, 0x0E, 0x43),
+		)
+		path_ptr = ctypes.c_wchar_p()
+		hr = ctypes.windll.shell32.SHGetKnownFolderPath(
+			ctypes.byref(folder_id), 0, None, ctypes.byref(path_ptr)
+		)
+		if hr == 0 and path_ptr.value:
+			base = path_ptr.value
+			try:
+				ctypes.windll.ole32.CoTaskMemFree(path_ptr)
+			except Exception:
+				pass
+			return os.path.join(base, "CloudUploader")
+	except Exception:
+		pass
+	return os.path.join(os.path.expanduser("~"), "Music", "CloudUploader")
+
+
 def _getRecordingsFolder():
-	folder = os.path.join(globalVars.appArgs.configPath, "cloudUploader", "recordings")
+	folder = os.path.join(_getMusicCloudUploaderFolder(), "recordings")
 	try:
 		os.makedirs(folder, exist_ok=True)
+	except Exception:
+		pass
+	# One-time migration: move leftover clips from the old config-path folder
+	# so updating the add-on does not leave them stranded / deleted.
+	try:
+		oldFolder = os.path.join(
+			globalVars.appArgs.configPath, "cloudUploader", "recordings"
+		)
+		if os.path.isdir(oldFolder) and os.path.abspath(oldFolder) != os.path.abspath(folder):
+			for name in os.listdir(oldFolder):
+				src = os.path.join(oldFolder, name)
+				dst = os.path.join(folder, name)
+				if not os.path.isfile(src):
+					continue
+				if os.path.exists(dst):
+					continue
+				try:
+					shutil.move(src, dst)
+				except Exception:
+					try:
+						shutil.copy2(src, dst)
+						os.remove(src)
+					except Exception:
+						pass
 	except Exception:
 		pass
 	return folder
@@ -183,15 +283,19 @@ def _openRecordingsFolder():
 	os.startfile(folder)
 
 
-def _pruneOldRecordings(maxAgeSeconds=7 * 24 * 3600):
-	"""Deletes leftover recorded clips older than maxAgeSeconds, so the
-	recordings folder doesn't grow forever. Recordings the user has already
-	uploaded (or decided not to keep) have no other reference once this
-	plugin's session ends."""
+def _pruneOldRecordings(maxAgeSeconds=30 * 24 * 3600):
+	"""Deletes leftover *temporary* recorded clips older than maxAgeSeconds.
+	Only prunes files whose names look like auto-generated session clips
+	(nvdaCloudUploaderRec...), not anything the user renamed or saved
+	elsewhere. Music/CloudUploader is the permanent home so addon updates
+	no longer wipe recordings."""
 	folder = _getRecordingsFolder()
 	try:
 		now = time.time()
 		for name in os.listdir(folder):
+			# Only auto-named session files from this add-on
+			if not name.startswith("nvdaCloudUploaderRec"):
+				continue
 			path = os.path.join(folder, name)
 			try:
 				if now - os.path.getmtime(path) > maxAgeSeconds:
@@ -603,7 +707,7 @@ class _WaveInRecorder(object):
 
 try:
 	import comtypes
-	from comtypes import GUID, COMMETHOD, HRESULT, POINTER as _P
+	from comtypes import GUID, COMMETHOD, HRESULT, POINTER as _P, COMObject
 except ImportError:
 	comtypes = None
 
@@ -668,13 +772,19 @@ class _LoopbackRecorder(object):
 	AUDCLNT_SHAREMODE_SHARED = 0
 	AUDCLNT_BUFFERFLAGS_SILENT = 0x2
 
-	def __init__(self, deviceId=None):
+	def __init__(self, deviceId=None, excludeProcessId=None):
 		self._client = None
 		self._captureClient = None
 		self._device = None
 		self._enumerator = None
 		self._chunks = []
 		self._deviceId = deviceId or None
+		# When set, try Windows process-loopback capture that records all
+		# system audio *except* this process tree (NVDA). Requires Win10
+		# build 20348+. Falls back to normal device loopback on failure.
+		self._excludeProcessId = int(excludeProcessId) if excludeProcessId else None
+		self.usedProcessLoopback = False
+		self._processLoopbackMode = False
 		self.usedFallbackDevice = False
 		self.samplerate = None
 		self.channels = self.OUT_CHANNELS
@@ -801,7 +911,13 @@ class _LoopbackRecorder(object):
 		_LoopbackRecorder._IAudioCaptureClient = IAudioCaptureClient
 
 	def open(self):
-		"""Prepare the loopback client without starting capture yet."""
+		"""Prepare the loopback client without starting capture yet.
+
+		If excludeProcessId is set, tries Windows process-loopback capture
+		(all system audio except that process tree) so NVDA can keep
+		speaking while being omitted from the recording. Requires Windows
+		10 build 20348+. On failure, falls back to normal device loopback.
+		"""
 		if comtypes is None:
 			raise Exception(_("Computer audio recording is unavailable on this system"))
 		self._buildInterfaces()
@@ -809,6 +925,308 @@ class _LoopbackRecorder(object):
 			comtypes.CoInitialize()
 		except Exception:
 			pass
+		if self._excludeProcessId:
+			try:
+				self._openProcessLoopbackExclude(self._excludeProcessId)
+				self.usedProcessLoopback = True
+				log.info(
+					"Cloud Uploader: computer audio using process-loopback "
+					"exclude PID %s" % self._excludeProcessId
+				)
+				return
+			except Exception as e:
+				log.warning(
+					"Cloud Uploader: process-loopback exclude failed, "
+					"falling back to normal loopback (NVDA audio will be "
+					"included): %s" % e
+				)
+				self._client = None
+				self._captureClient = None
+		self._openDeviceLoopback()
+
+	def _openProcessLoopbackExclude(self, processId):
+		"""Run process-loopback exclude entirely on a dedicated MTA thread.
+
+		ActivateAudioInterfaceAsync requires MTA. IAudioClient does not
+		marshal reliably across apartments (CoMarshal fails with 0x80040155),
+		so Start/poll/Stop all stay on that same worker thread. Chunks are
+		appended to self._chunks under a lock for the main thread to read.
+		"""
+		self._plLock = threading.Lock()
+		self._plStartEvent = threading.Event()
+		self._plStopEvent = threading.Event()
+		self._plReadyEvent = threading.Event()
+		self._plError = None
+		self._plThread = None
+		self._client = "process-loopback"  # truthy sentinel so startCapture proceeds
+		self._captureClient = "process-loopback"
+		self._srcChannels = 2
+		self.samplerate = 48000
+		self._srcSampwidth = 4
+		self._srcIsFloat = True
+		self._capturing = False
+		self._processLoopbackMode = True
+
+		recorder = self
+		pid = int(processId)
+
+		def _worker():
+			AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK = 1
+			PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE = 1
+			VT_BLOB = 0x41
+			VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK = "VAD\\Process_Loopback"
+			WAVE_FORMAT_IEEE_FLOAT = 3
+			AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM = 0x80000000
+			AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY = 0x08000000
+			COINIT_MULTITHREADED = 0x0
+			RPC_E_CHANGED_MODE = -2147417850
+
+			client = None
+			captureClient = None
+			try:
+				ctypes.windll.ole32.CoInitializeEx(None, COINIT_MULTITHREADED)
+
+				class AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS(ctypes.Structure):
+					_fields_ = [
+						("TargetProcessId", ctypes.c_uint32),
+						("ProcessLoopbackMode", ctypes.c_int),
+					]
+
+				class AUDIOCLIENT_ACTIVATION_PARAMS(ctypes.Structure):
+					_fields_ = [
+						("ActivationType", ctypes.c_int),
+						("ProcessLoopbackParams", AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS),
+					]
+
+				class _BLOB(ctypes.Structure):
+					_fields_ = [
+						("cbSize", ctypes.c_uint32),
+						("pBlobData", ctypes.c_void_p),
+					]
+
+				class PROPVARIANT(ctypes.Structure):
+					_fields_ = [
+						("vt", ctypes.c_uint16),
+						("wReserved1", ctypes.c_uint16),
+						("wReserved2", ctypes.c_uint16),
+						("wReserved3", ctypes.c_uint16),
+						("blob", _BLOB),
+					]
+
+				class IActivateAudioInterfaceAsyncOperation(comtypes.IUnknown):
+					_iid_ = GUID("{72A22D78-CDE4-431D-B8CC-843A71199B6D}")
+					_methods_ = [
+						COMMETHOD([], HRESULT, "GetActivateResult",
+							(["out"], _P(HRESULT), "activateResult"),
+							(["out"], _P(_P(comtypes.IUnknown)), "activatedInterface"),
+						),
+					]
+
+				class IAgileObject(comtypes.IUnknown):
+					_iid_ = GUID("{94EA2B94-E9CC-49E0-C0FF-EE64CA8F5B90}")
+					_methods_ = []
+
+				class IActivateAudioInterfaceCompletionHandler(comtypes.IUnknown):
+					_iid_ = GUID("{41D949AB-9862-444A-80F6-C261334DA5EB}")
+					_methods_ = [
+						COMMETHOD([], HRESULT, "ActivateCompleted",
+							(["in"], ctypes.POINTER(IActivateAudioInterfaceAsyncOperation),
+							 "activateOperation"),
+						),
+					]
+
+				class _CompletionHandler(COMObject):
+					_com_interfaces_ = [
+						IActivateAudioInterfaceCompletionHandler,
+						IAgileObject,
+					]
+
+					def __init__(self):
+						super(_CompletionHandler, self).__init__()
+						self.done = threading.Event()
+						self.operation = None
+
+					def ActivateCompleted(self, this, activateOperation):
+						self.operation = activateOperation
+						self.done.set()
+						return 0
+
+				params = AUDIOCLIENT_ACTIVATION_PARAMS()
+				params.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK
+				params.ProcessLoopbackParams.TargetProcessId = pid
+				params.ProcessLoopbackParams.ProcessLoopbackMode = (
+					PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE
+				)
+
+				pv = PROPVARIANT()
+				pv.vt = VT_BLOB
+				pv.blob.cbSize = ctypes.sizeof(params)
+				pv.blob.pBlobData = ctypes.cast(ctypes.byref(params), ctypes.c_void_p)
+
+				handler = _CompletionHandler()
+				op = ctypes.POINTER(IActivateAudioInterfaceAsyncOperation)()
+
+				Activate = ctypes.windll.Mmdevapi.ActivateAudioInterfaceAsync
+				Activate.restype = ctypes.c_long
+				handler_ptr = handler.QueryInterface(IActivateAudioInterfaceCompletionHandler)
+				hr = Activate(
+					VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
+					ctypes.byref(recorder.IID_IAudioClient),
+					ctypes.byref(pv),
+					handler_ptr,
+					ctypes.byref(op),
+				)
+				if hr != 0:
+					raise Exception(
+						"ActivateAudioInterfaceAsync HRESULT 0x%08X" % (hr & 0xFFFFFFFF)
+					)
+				if not handler.done.wait(timeout=8.0):
+					raise Exception("process-loopback activation timed out")
+
+				async_op = handler.operation if handler.operation is not None else op
+				try:
+					activateHr, unknown = async_op.GetActivateResult()
+				except Exception:
+					activateHr, unknown = async_op.contents.GetActivateResult()
+				activateHr = _asInt(activateHr)
+				if activateHr != 0:
+					raise Exception(
+						"GetActivateResult HRESULT 0x%08X" % (activateHr & 0xFFFFFFFF)
+					)
+				if unknown is None or _isNullPtr(unknown):
+					raise Exception("process-loopback returned no interface")
+
+				client = unknown.QueryInterface(recorder._IAudioClient)
+
+				class _Wfx(ctypes.Structure):
+					_pack_ = 1
+					_fields_ = [
+						("wFormatTag", ctypes.c_uint16),
+						("nChannels", ctypes.c_uint16),
+						("nSamplesPerSec", ctypes.c_uint32),
+						("nAvgBytesPerSec", ctypes.c_uint32),
+						("nBlockAlign", ctypes.c_uint16),
+						("wBitsPerSample", ctypes.c_uint16),
+						("cbSize", ctypes.c_uint16),
+					]
+
+				wfx = _Wfx()
+				wfx.wFormatTag = WAVE_FORMAT_IEEE_FLOAT
+				wfx.nChannels = 2
+				wfx.nSamplesPerSec = 48000
+				wfx.wBitsPerSample = 32
+				wfx.nBlockAlign = 8
+				wfx.nAvgBytesPerSec = 48000 * 8
+				wfx.cbSize = 0
+
+				flags = (
+					recorder.AUDCLNT_STREAMFLAGS_LOOPBACK
+					| AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
+					| AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
+				)
+				client.Initialize(
+					recorder.AUDCLNT_SHAREMODE_SHARED,
+					flags,
+					3 * 1000 * 1000, 0,
+					ctypes.byref(wfx),
+					None,
+				)
+				capturePtr = client.GetService(ctypes.byref(recorder.IID_IAudioCaptureClient))
+				if _isNullPtr(capturePtr):
+					raise Exception("process-loopback client did not return a capture client")
+				captureClient = ctypes.cast(
+					_asVoidPtr(capturePtr), ctypes.POINTER(recorder._IAudioCaptureClient)
+				)
+
+				# Ready for startCapture
+				recorder._plReadyEvent.set()
+
+				# Wait until main thread calls startCapture()
+				while not recorder._plStopEvent.is_set():
+					if recorder._plStartEvent.wait(timeout=0.05):
+						break
+				if recorder._plStopEvent.is_set():
+					return
+
+				client.Start()
+
+				# Capture loop: drain packets until stop
+				while not recorder._plStopEvent.is_set():
+					try:
+						drained = False
+						while True:
+							packetFrames = _asInt(captureClient.GetNextPacketSize())
+							if packetFrames == 0:
+								break
+							drained = True
+							dataPtr, numFrames, flags, devPos, qpcPos = captureClient.GetBuffer()
+							numFrames = _asInt(numFrames)
+							flagsVal = _asInt(flags)
+							frameBytes = 2 * 4  # float32 stereo
+							byteLen = numFrames * frameBytes
+							if numFrames and not (flagsVal & recorder.AUDCLNT_BUFFERFLAGS_SILENT) and not _isNullPtr(dataPtr):
+								raw = ctypes.string_at(_asVoidPtr(dataPtr), byteLen)
+								converted = recorder._convertChunk(raw)
+								with recorder._plLock:
+									recorder._chunks.append(converted)
+							elif numFrames:
+								outFrameBytes = recorder.OUT_CHANNELS * recorder.OUT_SAMPWIDTH
+								with recorder._plLock:
+									recorder._chunks.append(b"\x00" * (numFrames * outFrameBytes))
+							captureClient.ReleaseBuffer(numFrames)
+						if not drained:
+							time.sleep(0.01)
+					except Exception as e:
+						log.error("Cloud Uploader: process-loopback capture glitch: %s" % e)
+						time.sleep(0.05)
+
+				try:
+					client.Stop()
+				except Exception:
+					pass
+				# Final drain
+				try:
+					while True:
+						packetFrames = _asInt(captureClient.GetNextPacketSize())
+						if packetFrames == 0:
+							break
+						dataPtr, numFrames, flags, devPos, qpcPos = captureClient.GetBuffer()
+						numFrames = _asInt(numFrames)
+						flagsVal = _asInt(flags)
+						frameBytes = 2 * 4
+						byteLen = numFrames * frameBytes
+						if numFrames and not (flagsVal & recorder.AUDCLNT_BUFFERFLAGS_SILENT) and not _isNullPtr(dataPtr):
+							raw = ctypes.string_at(_asVoidPtr(dataPtr), byteLen)
+							converted = recorder._convertChunk(raw)
+							with recorder._plLock:
+								recorder._chunks.append(converted)
+						elif numFrames:
+							outFrameBytes = recorder.OUT_CHANNELS * recorder.OUT_SAMPWIDTH
+							with recorder._plLock:
+								recorder._chunks.append(b"\x00" * (numFrames * outFrameBytes))
+						captureClient.ReleaseBuffer(numFrames)
+				except Exception:
+					pass
+			except Exception as e:
+				recorder._plError = e
+				recorder._plReadyEvent.set()
+			finally:
+				client = None
+				captureClient = None
+
+		self._plThread = threading.Thread(
+			target=_worker, name="CloudUploaderProcessLoopback", daemon=True
+		)
+		self._plThread.start()
+		if not self._plReadyEvent.wait(timeout=12.0):
+			self._plStopEvent.set()
+			raise Exception("process-loopback activation timed out")
+		if self._plError is not None:
+			self._plStopEvent.set()
+			raise self._plError
+
+	def _openDeviceLoopback(self):
+		"""Original endpoint loopback (captures everything including NVDA)."""
 		enumerator = comtypes.CoCreateInstance(
 			self.CLSID_MMDeviceEnumerator, interface=self._IMMDeviceEnumerator,
 			clsctx=comtypes.CLSCTX_ALL,
@@ -875,6 +1293,10 @@ class _LoopbackRecorder(object):
 	def startCapture(self):
 		if self._client is None or getattr(self, "_capturing", False):
 			return
+		if getattr(self, "_processLoopbackMode", False):
+			self._plStartEvent.set()
+			self._capturing = True
+			return
 		self._client.Start()
 		self._capturing = True
 
@@ -883,6 +1305,8 @@ class _LoopbackRecorder(object):
 		self.startCapture()
 
 	def poll(self):
+		if getattr(self, "_processLoopbackMode", False):
+			return  # worker thread drains packets continuously
 		if self._captureClient is None:
 			return
 		while True:
@@ -971,6 +1395,18 @@ class _LoopbackRecorder(object):
 	def stop(self):
 		if self._client is None:
 			return b""
+		if getattr(self, "_processLoopbackMode", False):
+			self._plStopEvent.set()
+			self._plStartEvent.set()  # unblock worker if still waiting to start
+			if self._plThread is not None:
+				self._plThread.join(timeout=5.0)
+			self._capturing = False
+			self._client = None
+			self._captureClient = None
+			with self._plLock:
+				data = b"".join(self._chunks)
+				self._chunks = []
+			return data
 		try:
 			self._client.Stop()
 		except Exception:
@@ -981,6 +1417,16 @@ class _LoopbackRecorder(object):
 
 	def abort(self):
 		if self._client is None:
+			return
+		if getattr(self, "_processLoopbackMode", False):
+			self._plStopEvent.set()
+			self._plStartEvent.set()
+			if self._plThread is not None:
+				self._plThread.join(timeout=3.0)
+			self._capturing = False
+			self._client = None
+			self._captureClient = None
+			self._chunks = []
 			return
 		try:
 			self._client.Stop()
@@ -1182,6 +1628,7 @@ def _processCapturedAudio(
 	micRaw, micChannels, micSampwidth, micRate,
 	sysRaw, sysRate, sourceMode, separate,
 	outPath, micPath, sysPath, startClockOffset,
+	micWallDuration=None, sysWallDuration=None,
 ):
 	"""Aligns dual-source tracks, mixes at 0 dB, writes WAV file(s), and
 	returns a dict of buffers/params for the record dialog (or background
@@ -2268,32 +2715,6 @@ def _uploadToCatbox(filePath, expiryCode, progressCallback, cancelEvent):
 				pass
 
 
-def _uploadToZeroXZero(filePath, expiryCode, progressCallback, cancelEvent):
-	stream = _MultipartStream(filePath, "file", {}, progressCallback, cancelEvent)
-	conn = None
-	try:
-		conn = _CancellableHTTPSConnection("0x0.st", cancelEvent)
-		headers = {
-			"Content-Type": stream.contentType,
-			"Content-Length": str(stream.totalSize),
-			"User-Agent": "Mozilla/5.0 (compatible; NVDA-CloudUploader/1.0)",
-		}
-		status, text = _performUpload(conn, "POST", "/", headers, stream, cancelEvent)
-		if status not in (200, 201):
-			raise Exception(_("The upload server returned an error ({status}): {text}").format(status=status, text=text[:200]))
-		firstLine = text.splitlines()[0].strip() if text else ""
-		if not firstLine.lower().startswith("http"):
-			raise Exception(_("The upload server returned an unexpected response: {text}").format(text=text[:200]))
-		return firstLine
-	finally:
-		stream.close()
-		if conn is not None:
-			try:
-				conn.close()
-			except Exception:
-				pass
-
-
 def _uploadToFilebin(filePath, expiryCode, progressCallback, cancelEvent):
 	fileName = os.path.basename(filePath)
 	binId = uuid.uuid4().hex[:16]
@@ -2344,6 +2765,70 @@ def _uploadToUguu(filePath, expiryCode, progressCallback, cancelEvent):
 				conn.close()
 			except Exception:
 				pass
+
+
+def _runSimpleUpload(hostName, method, path, stream, contentType, cancelEvent):
+	"""Shared connect/send/cleanup used by the newer hosts. Returns
+	(status, text)."""
+	conn = None
+	try:
+		conn = _CancellableHTTPSConnection(hostName, cancelEvent)
+		headers = {
+			"Content-Type": contentType,
+			"Content-Length": str(stream.totalSize),
+			"User-Agent": "Mozilla/5.0 (compatible; NVDA-CloudUploader/1.0)",
+		}
+		return _performUpload(conn, method, path, headers, stream, cancelEvent)
+	finally:
+		stream.close()
+		if conn is not None:
+			try:
+				conn.close()
+			except Exception:
+				pass
+
+
+def _serverError(status, text):
+	return Exception(_("The upload server returned an error ({status}): {text}").format(status=status, text=text[:200]))
+
+
+def _unexpectedResponse(text):
+	return Exception(_("The upload server returned an unexpected response: {text}").format(text=text[:200]))
+
+
+def _firstUrlLine(text):
+	firstLine = text.splitlines()[0].strip() if text else ""
+	if not firstLine.lower().startswith("http"):
+		raise _unexpectedResponse(text)
+	return firstLine
+
+
+def _uploadToBuzzheavier(filePath, expiryCode, progressCallback, cancelEvent):
+	fileName = os.path.basename(filePath)
+	stream = _RawStream(filePath, progressCallback, cancelEvent)
+	path = "/" + urllib.parse.quote(fileName)
+	status, text = _runSimpleUpload("w.buzzheavier.com", "PUT", path, stream, "application/octet-stream", cancelEvent)
+	if status not in (200, 201):
+		raise _serverError(status, text)
+	if text.lower().startswith("http"):
+		return text.splitlines()[0].strip()
+	try:
+		data = json.loads(text)
+	except Exception:
+		raise _unexpectedResponse(text)
+	fileData = data.get("data") if isinstance(data, dict) else None
+	fileId = fileData.get("id") if isinstance(fileData, dict) else None
+	if not fileId:
+		raise _unexpectedResponse(text)
+	return "https://buzzheavier.com/%s" % fileId
+
+
+def _uploadToX0At(filePath, expiryCode, progressCallback, cancelEvent):
+	stream = _MultipartStream(filePath, "file", {"keep_name": "1"}, progressCallback, cancelEvent)
+	status, text = _runSimpleUpload("x0.at", "POST", "/", stream, stream.contentType, cancelEvent)
+	if status not in (200, 201):
+		raise _serverError(status, text)
+	return _firstUrlLine(text)
 
 
 def _checkHostReachable(hostName, path="/", timeout=3):
@@ -2436,16 +2921,6 @@ class CatboxHost(UploadHost):
 		return _uploadToCatbox(filePath, expiryCode, progressCallback, cancelEvent)
 
 
-class ZeroXZeroHost(UploadHost):
-	key = "0x0"
-	label = _("0x0.st - kept 30 days to 1 year depending on file size, but renames your file")
-	expiryOptions = ZEROXZERO_EXPIRY_OPTIONS
-	checkHost = "0x0.st"
-
-	def upload(self, filePath, expiryCode, progressCallback, cancelEvent):
-		return _uploadToZeroXZero(filePath, expiryCode, progressCallback, cancelEvent)
-
-
 class FilebinHost(UploadHost):
 	key = "filebin"
 	label = _("Filebin - keeps your original file name, but not a direct download link, expires in about 6 days")
@@ -2466,7 +2941,30 @@ class UguuHost(UploadHost):
 		return _uploadToUguu(filePath, expiryCode, progressCallback, cancelEvent)
 
 
-ALL_HOSTS = [LitterboxHost(), GofileHost(), CatboxHost(), ZeroXZeroHost(), FilebinHost(), UguuHost()]
+class BuzzheavierHost(UploadHost):
+	key = "buzzheavier"
+	label = _("Buzzheavier - download page (not a direct link), keeps your original file name, kept 15 days and extended by downloads")
+	expiryOptions = BUZZHEAVIER_EXPIRY_OPTIONS
+	checkHost = "buzzheavier.com"
+
+	def upload(self, filePath, expiryCode, progressCallback, cancelEvent):
+		return _uploadToBuzzheavier(filePath, expiryCode, progressCallback, cancelEvent)
+
+
+class X0AtHost(UploadHost):
+	key = "x0at"
+	label = _("x0.at - direct download link, keeps your file name, kept 3 to 100 days depending on file size")
+	expiryOptions = X0AT_EXPIRY_OPTIONS
+	checkHost = "x0.at"
+
+	def upload(self, filePath, expiryCode, progressCallback, cancelEvent):
+		return _uploadToX0At(filePath, expiryCode, progressCallback, cancelEvent)
+
+
+ALL_HOSTS = [
+	LitterboxHost(), GofileHost(), CatboxHost(), FilebinHost(), UguuHost(),
+	BuzzheavierHost(), X0AtHost(),
+]
 HOSTS_BY_KEY = {host.key: host for host in ALL_HOSTS}
 
 
@@ -3094,6 +3592,7 @@ class RecordVoiceDialog(wx.Dialog):
 		self._previewLengthMs = 0
 		self._recording = False
 		self._hasRecording = False
+		self._excludeNVDAActive = False
 		self._playing = False
 		self._previewPlayer = _StreamingPreviewPlayer()
 		self._startTime = None
@@ -3189,6 +3688,16 @@ class RecordVoiceDialog(wx.Dialog):
 		)
 		self.separateTracksCheckbox.SetValue(config.conf["cloudUploader"]["saveSeparateTracks"])
 		mainSizer.Add(self.separateTracksCheckbox, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, border=10)
+
+		self.excludeNVDACheckbox = wx.CheckBox(
+			self,
+			label=_(
+				"Exclude NVDA from computer audio "
+				"(keeps NVDA speaking; recording omits NVDA audio)"
+			),
+		)
+		self.excludeNVDACheckbox.SetValue(config.conf["cloudUploader"]["excludeNVDAAudio"])
+		mainSizer.Add(self.excludeNVDACheckbox, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, border=10)
 
 		self.saveDefaultsBtn = wx.Button(self, label=_("Save these settings for future recordings"))
 		self.saveDefaultsBtn.Bind(wx.EVT_BUTTON, self.onSaveDefaults)
@@ -3416,6 +3925,10 @@ class RecordVoiceDialog(wx.Dialog):
 		self.micDeviceChoiceCtrl.Enable(key in ("mic", "both") and not locked)
 		self.systemDeviceChoiceCtrl.Enable(key in ("computer", "both") and not locked)
 		self.separateTracksCheckbox.Enable(key == "both" and not locked)
+		try:
+			self.excludeNVDACheckbox.Enable(key in ("computer", "both") and not locked)
+		except RuntimeError:
+			pass
 		# Volume balance applies when recording both; editable before and
 		# after capture so defaults can be set, and the live mix adjusted.
 		volEnabled = key == "both" and not self._recording
@@ -3439,6 +3952,7 @@ class RecordVoiceDialog(wx.Dialog):
 		systemDeviceId = self._systemDevices[self.systemDeviceChoiceCtrl.GetSelection()][0]
 		config.conf["cloudUploader"]["systemDeviceId"] = systemDeviceId or ""
 		config.conf["cloudUploader"]["saveSeparateTracks"] = self.separateTracksCheckbox.GetValue()
+		config.conf["cloudUploader"]["excludeNVDAAudio"] = self.excludeNVDACheckbox.GetValue()
 		config.conf["cloudUploader"]["micGainDb"] = float(self.micVolumeSlider.GetValue())
 		config.conf["cloudUploader"]["systemGainDb"] = float(self.systemVolumeSlider.GetValue())
 		self._micGainDb = float(self.micVolumeSlider.GetValue())
@@ -3474,7 +3988,12 @@ class RecordVoiceDialog(wx.Dialog):
 				micRecorder.open()
 				usedFallbackMicDevice = micRecorder.usedFallbackDevice
 			if sourceKey in ("computer", "both"):
-				sysRecorder = _LoopbackRecorder(deviceId=systemDeviceId)
+				excludePid = None
+				if bool(self.excludeNVDACheckbox.GetValue()):
+					excludePid = os.getpid()
+				sysRecorder = _LoopbackRecorder(
+					deviceId=systemDeviceId, excludeProcessId=excludePid
+				)
 				sysRecorder.open()
 				usedFallbackSystemDevice = sysRecorder.usedFallbackDevice
 		except Exception as e:
@@ -3568,8 +4087,15 @@ class RecordVoiceDialog(wx.Dialog):
 			self._startClockOffset = micStartClock - sysStartClock
 		else:
 			self._startClockOffset = 0.0
+		self._micStartClock = micStartClock
+		self._sysStartClock = sysStartClock
 		self._sourceMode = sourceKey
 		self._recording = True
+		# Persist exclude-NVDA preference (actual exclusion is done in
+		# _LoopbackRecorder via process-loopback, not by muting NVDA).
+		excludeNVDA = bool(self.excludeNVDACheckbox.GetValue())
+		config.conf["cloudUploader"]["excludeNVDAAudio"] = excludeNVDA
+		self._excludeNVDAActive = bool(excludeNVDA and sourceKey in ("computer", "both"))
 		self._hasRecording = False
 		self._undoStack = []
 		self._redoStack = []
@@ -3582,6 +4108,10 @@ class RecordVoiceDialog(wx.Dialog):
 		self.micDeviceChoiceCtrl.Disable()
 		self.systemDeviceChoiceCtrl.Disable()
 		self.separateTracksCheckbox.Disable()
+		try:
+			self.excludeNVDACheckbox.Disable()
+		except RuntimeError:
+			pass
 		self.saveDefaultsBtn.Disable()
 		self.previewBtn.Disable()
 		self.normalizeBtn.Disable()
@@ -3606,22 +4136,41 @@ class RecordVoiceDialog(wx.Dialog):
 			ui.message(_("The selected microphone wasn't available, using the system default instead"))
 		elif usedFallbackSystemDevice:
 			ui.message(_("The selected computer audio device wasn't available, using the system default instead"))
+		elif getattr(self, "_excludeNVDAActive", False):
+			if sysRecorder is not None and getattr(sysRecorder, "usedProcessLoopback", False):
+				ui.message(_("Now recording (NVDA audio excluded from capture)"))
+			else:
+				ui.message(_(
+					"Now recording. Could not exclude NVDA from computer audio "
+					"(process loopback unavailable); NVDA will be included in the recording."
+				))
 		else:
 			ui.message(_("Now recording"))
 		self._timer.Start(50)
 
 	def _stopRecording(self):
 		self._timer.Stop()
+		self._excludeNVDAActive = False
 		self.recordBtn.Disable()
 		self.statusCtrl.SetLabel(_("Processing recording, please wait..."))
 		ui.message(_("Processing recording, please wait..."))
 		try:
 			micRaw = self._micRecorder.stop() if self._micRecorder else None
+			micStopClock = time.perf_counter()
 			sysRaw = self._sysRecorder.stop() if self._sysRecorder else None
+			sysStopClock = time.perf_counter()
 			micChannels = self._micRecorder.channels if self._micRecorder else None
 			micRate = self._micRecorder.samplerate if self._micRecorder else None
 			micSampwidth = (self._micRecorder.bitspersample // 8) if self._micRecorder else 2
 			sysRate = self._sysRecorder.samplerate if self._sysRecorder else None
+			micWallDuration = (
+				(micStopClock - self._micStartClock)
+				if (self._micRecorder and self._micStartClock is not None) else None
+			)
+			sysWallDuration = (
+				(sysStopClock - self._sysStartClock)
+				if (self._sysRecorder and self._sysStartClock is not None) else None
+			)
 		except Exception as e:
 			log.error("Cloud Uploader: could not stop recording: %s" % e)
 			self._recording = False
@@ -3645,20 +4194,21 @@ class RecordVoiceDialog(wx.Dialog):
 			sysRaw, sysRate,
 			self._sourceMode, self.separateTracksCheckbox.GetValue(),
 			self._outputPath, self._micOutputPath, self._sysOutputPath,
-			self._startClockOffset,
+			self._startClockOffset, micWallDuration, sysWallDuration,
 		)
 		threading.Thread(target=self._stopProcessThread, args=args, daemon=True).start()
 
 	def _stopProcessThread(
 		self, micRaw, micChannels, micSampwidth, micRate,
 		sysRaw, sysRate, sourceMode, separate, outPath, micPath, sysPath,
-		startClockOffset,
+		startClockOffset, micWallDuration=None, sysWallDuration=None,
 	):
 		try:
 			result = _processCapturedAudio(
 				micRaw, micChannels, micSampwidth, micRate,
 				sysRaw, sysRate, sourceMode, separate,
 				outPath, micPath, sysPath, startClockOffset,
+				micWallDuration, sysWallDuration,
 			)
 		except Exception as e:
 			log.error("Cloud Uploader: could not process recording: %s" % e)
@@ -4327,6 +4877,7 @@ class RecordVoiceDialog(wx.Dialog):
 						recorder.abort()
 					except Exception:
 						pass
+			self._excludeNVDAActive = False
 		self._stopPreview()
 		self.EndModal(wx.ID_CANCEL)
 		if hasattr(evt, "Veto"):
@@ -4349,6 +4900,54 @@ def _addSectionHeader(helper, parent, text):
 	font = font.Bold()
 	header.SetFont(font)
 	helper.addItem(header)
+
+
+class DebugLogDialog(wx.Dialog):
+	"""Shows Cloud Uploader's own recent log lines - a rolling record kept
+	separately from NVDA's full log, so there's no need to dig through
+	everything else NVDA logs just to find the relevant bit."""
+
+	def __init__(self, parent):
+		super().__init__(parent, title=_("Cloud Uploader debug log"))
+		mainSizer = wx.BoxSizer(wx.VERTICAL)
+		helper = gui.guiHelper.BoxSizerHelper(self, sizer=mainSizer)
+
+		self.logText = helper.addItem(
+			wx.TextCtrl(
+				self,
+				value=self._currentLogText(),
+				style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP,
+				size=(600, 350),
+			)
+		)
+		self.logText.SetFocus()
+
+		buttonHelper = gui.guiHelper.ButtonHelper(wx.HORIZONTAL)
+		self.copyButton = buttonHelper.addButton(self, label=_("&Copy to clipboard"))
+		self.copyButton.Bind(wx.EVT_BUTTON, self.onCopy)
+		self.clearButton = buttonHelper.addButton(self, label=_("C&lear log"))
+		self.clearButton.Bind(wx.EVT_BUTTON, self.onClear)
+		self.closeButton = buttonHelper.addButton(self, label=_("Clos&e"))
+		self.closeButton.Bind(wx.EVT_BUTTON, lambda evt: self.EndModal(wx.ID_CLOSE))
+		helper.addItem(buttonHelper)
+
+		self.SetEscapeId(wx.ID_CLOSE)
+		mainSizer.Fit(self)
+		self.Sizer = mainSizer
+		self.CentreOnScreen()
+
+	def _currentLogText(self):
+		if not _debugLogBuffer:
+			return _("No Cloud Uploader log entries yet this session.")
+		return "\n".join(_debugLogBuffer)
+
+	def onCopy(self, evt):
+		api.copyToClip(self.logText.GetValue(), notify=True)
+
+	def onClear(self, evt):
+		_debugLogBuffer.clear()
+		self.logText.SetValue(self._currentLogText())
+		ui.message(_("Debug log cleared"))
 
 
 class CloudUploaderSettingsPanel(gui.settingsDialogs.SettingsPanel):
@@ -4462,6 +5061,17 @@ class CloudUploaderSettingsPanel(gui.settingsDialogs.SettingsPanel):
 		)
 		self.separateTracksCheckbox.SetValue(config.conf["cloudUploader"]["saveSeparateTracks"])
 
+		self.excludeNVDACheckbox = helper.addItem(
+			wx.CheckBox(
+				self,
+				label=_(
+					"Exclude NVDA from computer audio by default "
+					"(keeps NVDA speaking; recording omits NVDA audio)"
+				),
+			)
+		)
+		self.excludeNVDACheckbox.SetValue(config.conf["cloudUploader"]["excludeNVDAAudio"])
+
 		try:
 			defaultMicGain = int(round(float(config.conf["cloudUploader"]["micGainDb"])))
 		except Exception:
@@ -4541,6 +5151,15 @@ class CloudUploaderSettingsPanel(gui.settingsDialogs.SettingsPanel):
 		donateBtn.Bind(wx.EVT_BUTTON, self.onDonate)
 		helper.addItem(donateBtn)
 
+		debugLogBtn = wx.Button(self, label=_("&View debug log"))
+		debugLogBtn.Bind(wx.EVT_BUTTON, self.onViewDebugLog)
+		helper.addItem(debugLogBtn)
+
+	def onViewDebugLog(self, evt):
+		dlg = DebugLogDialog(self)
+		dlg.ShowModal()
+		dlg.Destroy()
+
 	def onDonate(self, evt):
 		webbrowser.open("https://ko-fi.com/naday")
 
@@ -4597,6 +5216,7 @@ class CloudUploaderSettingsPanel(gui.settingsDialogs.SettingsPanel):
 		config.conf["cloudUploader"]["micPreferMono"] = self.channelModeChoice.GetSelection() == 1
 		config.conf["cloudUploader"]["recordSourceMode"] = self._sourceModeKeys[self.sourceModeChoice.GetSelection()]
 		config.conf["cloudUploader"]["saveSeparateTracks"] = self.separateTracksCheckbox.GetValue()
+		config.conf["cloudUploader"]["excludeNVDAAudio"] = self.excludeNVDACheckbox.GetValue()
 		config.conf["cloudUploader"]["micGainDb"] = float(self.micGainSlider.GetValue())
 		config.conf["cloudUploader"]["systemGainDb"] = float(self.systemGainSlider.GetValue())
 		config.conf["cloudUploader"]["autoStartRecording"] = self.autoStartRecordingCheckbox.GetValue()
@@ -4702,6 +5322,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		# (or a manually-assigned shortcut for script_toggleBackgroundRecord).
 		self._bgRecording = False
 		self._bgProcessing = False
+		self._bgExcludeNVDAActive = False
 		self._bgMicRecorder = None
 		self._bgSysRecorder = None
 		self._bgSourceMode = "mic"
@@ -4964,6 +5585,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		"""Stops devices and clears state without opening the record dialog."""
 		self._bgRecording = False
 		self._bgProcessing = False
+		self._bgExcludeNVDAActive = False
 		for rec in (self._bgMicRecorder, self._bgSysRecorder):
 			if rec is not None:
 				try:
@@ -4992,7 +5614,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				micRecorder.open()
 				usedFallbackMicDevice = micRecorder.usedFallbackDevice
 			if sourceKey in ("computer", "both"):
-				sysRecorder = _LoopbackRecorder(deviceId=systemDeviceId)
+				excludePid = None
+				if bool(config.conf["cloudUploader"].get("excludeNVDAAudio", False)):
+					excludePid = os.getpid()
+				sysRecorder = _LoopbackRecorder(
+					deviceId=systemDeviceId, excludeProcessId=excludePid
+				)
 				sysRecorder.open()
 				usedFallbackSystemDevice = sysRecorder.usedFallbackDevice
 		except Exception as e:
@@ -5069,10 +5696,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._bgStartClockOffset = micStartClock - sysStartClock
 		else:
 			self._bgStartClockOffset = 0.0
+		self._bgMicStartClock = micStartClock
+		self._bgSysStartClock = sysStartClock
 		self._bgOutputPath = os.path.join(folder, "%s.wav" % alias)
 		self._bgMicOutputPath = os.path.join(folder, "%s_mic.wav" % alias)
 		self._bgSysOutputPath = os.path.join(folder, "%s_system.wav" % alias)
 		self._bgRecording = True
+		excludeNVDA = bool(config.conf["cloudUploader"].get("excludeNVDAAudio", False))
+		self._bgExcludeNVDAActive = bool(excludeNVDA and sourceKey in ("computer", "both"))
 		self._scheduleBgPoll()
 
 		if usedFallbackMicDevice and usedFallbackSystemDevice:
@@ -5081,6 +5712,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			ui.message(_("Background recording started (default microphone). Press NVDA+alt+o again to stop."))
 		elif usedFallbackSystemDevice:
 			ui.message(_("Background recording started (default computer audio device). Press NVDA+alt+o again to stop."))
+		elif getattr(self, "_bgExcludeNVDAActive", False):
+			if sysRecorder is not None and getattr(sysRecorder, "usedProcessLoopback", False):
+				ui.message(_("Background recording started (NVDA audio excluded). Press NVDA+alt+o again to stop."))
+			else:
+				ui.message(_(
+					"Background recording started. Could not exclude NVDA from computer audio; "
+					"NVDA will be included. Press NVDA+alt+o again to stop."
+				))
 		else:
 			ui.message(_("Background recording started. Press NVDA+alt+o again to stop."))
 
@@ -5088,15 +5727,26 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if not self._bgRecording:
 			return
 		self._bgRecording = False
+		self._bgExcludeNVDAActive = False
 		ui.message(_("Processing recording, please wait..."))
 		self._bgProcessing = True
 		try:
 			micRaw = self._bgMicRecorder.stop() if self._bgMicRecorder else None
+			micStopClock = time.perf_counter()
 			sysRaw = self._bgSysRecorder.stop() if self._bgSysRecorder else None
+			sysStopClock = time.perf_counter()
 			micChannels = self._bgMicRecorder.channels if self._bgMicRecorder else None
 			micRate = self._bgMicRecorder.samplerate if self._bgMicRecorder else None
 			micSampwidth = (self._bgMicRecorder.bitspersample // 8) if self._bgMicRecorder else 2
 			sysRate = self._bgSysRecorder.samplerate if self._bgSysRecorder else None
+			micWallDuration = (
+				(micStopClock - self._bgMicStartClock)
+				if (self._bgMicRecorder and self._bgMicStartClock is not None) else None
+			)
+			sysWallDuration = (
+				(sysStopClock - self._bgSysStartClock)
+				if (self._bgSysRecorder and self._bgSysStartClock is not None) else None
+			)
 		except Exception as e:
 			log.error("Cloud Uploader: could not stop background recording: %s" % e)
 			self._bgMicRecorder = None
@@ -5111,20 +5761,21 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			sysRaw, sysRate,
 			self._bgSourceMode, self._bgSeparateTracks,
 			self._bgOutputPath, self._bgMicOutputPath, self._bgSysOutputPath,
-			self._bgStartClockOffset,
+			self._bgStartClockOffset, micWallDuration, sysWallDuration,
 		)
 		threading.Thread(target=self._bgProcessThread, args=args, daemon=True).start()
 
 	def _bgProcessThread(
 		self, micRaw, micChannels, micSampwidth, micRate,
 		sysRaw, sysRate, sourceMode, separate, outPath, micPath, sysPath,
-		startClockOffset,
+		startClockOffset, micWallDuration=None, sysWallDuration=None,
 	):
 		try:
 			result = _processCapturedAudio(
 				micRaw, micChannels, micSampwidth, micRate,
 				sysRaw, sysRate, sourceMode, separate,
 				outPath, micPath, sysPath, startClockOffset,
+				micWallDuration, sysWallDuration,
 			)
 		except Exception as e:
 			log.error("Cloud Uploader: could not process background recording: %s" % e)
