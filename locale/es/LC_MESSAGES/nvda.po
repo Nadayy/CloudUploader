@@ -940,3 +940,38 @@ msgid ""
 msgstr ""
 "x0.at: enlace de descarga directa, mantiene el nombre de tu archivo, se "
 "conserva de 3 a 100 días según el tamaño"
+
+msgid "Could not open {device}, recording the other source only"
+msgstr "No se pudo abrir {device}, grabando solo con la otra fuente"
+
+msgid "Could not start computer audio, recording the microphone only"
+msgstr ""
+"No se pudo iniciar el audio de la computadora, grabando solo el micrófono"
+
+msgid "Could not start the microphone, recording computer audio only"
+msgstr ""
+"No se pudo iniciar el micrófono, grabando solo el audio de la computadora"
+
+msgid "computer audio"
+msgstr "el audio de la computadora"
+
+msgid "the microphone"
+msgstr "el micrófono"
+
+msgid ""
+"Warning: no computer audio was captured, even though NVDA exclusion was on. "
+"That part of the recording may be silent - check the debug log for details."
+msgstr ""
+"Advertencia: no se capturó audio del equipo, aunque la exclusión de NVDA "
+"estaba activada. Esa parte de la grabación podría estar en silencio; "
+"consulte el registro de depuración para más detalles."
+
+msgid "device unavailable"
+msgstr "dispositivo no disponible"
+
+msgid ""
+"Note: NVDA exclusion stopped working partway through this recording, so "
+"NVDA's own speech may be included in the computer audio."
+msgstr ""
+"Nota: la exclusión de NVDA dejó de funcionar a mitad de esta grabación, así "
+"que la voz de NVDA podría estar incluida en el audio del equipo."

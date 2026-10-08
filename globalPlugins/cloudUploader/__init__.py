@@ -767,10 +767,24 @@ class _LoopbackRecorder(object):
 	IID_IMMDeviceEnumerator = GUID("{A95664D2-9614-4F35-A746-DE8DB63617E6}") if comtypes else None
 	IID_IAudioClient = GUID("{1CB9AD4C-DBFA-4C32-B178-C2F568A703B2}") if comtypes else None
 	IID_IAudioCaptureClient = GUID("{C8ADBD64-E71E-48A0-A4DE-185C395CD317}") if comtypes else None
+	IID_IAudioRenderClient = GUID("{F294ACFC-3146-4483-A7BF-ADDCA7C260E2}") if comtypes else None
 	IID_IMMDeviceCollection = GUID("{0BD7A1BE-7A1A-44DB-8397-CC5392387B5E}") if comtypes else None
 	AUDCLNT_STREAMFLAGS_LOOPBACK = 0x00020000
+	AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM = 0x80000000
+	AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY = 0x08000000
 	AUDCLNT_SHAREMODE_SHARED = 0
 	AUDCLNT_BUFFERFLAGS_SILENT = 0x2
+
+	# A second ActivateAudioInterfaceAsync call for the "VAD\Process_Loopback"
+	# exclude device, targeting the same PID as an earlier, already-released
+	# call in this same NVDA process, has been observed in the field to fail
+	# outright with a generic E_UNEXPECTED ("Catastrophic failure") - even
+	# with retries and pauses between them. Reusing the one client that did
+	# activate successfully (Stop()/Start() it again for each new recording,
+	# instead of re-activating from scratch) sidesteps that entirely. Keyed
+	# by PID and kept for the lifetime of the NVDA process; {pid: (client,
+	# captureClient)}.
+	_processLoopbackCache = {}
 
 	def __init__(self, deviceId=None, excludeProcessId=None):
 		self._client = None
@@ -833,7 +847,7 @@ class _LoopbackRecorder(object):
 				),
 				COMMETHOD([], HRESULT, "GetBufferSize", (["out"], _P(ctypes.c_uint32), "pNumBufferFrames")),
 				COMMETHOD([], HRESULT, "_GetStreamLatency_unused", (["out"], _P(ctypes.c_int64), "p")),
-				COMMETHOD([], HRESULT, "_GetCurrentPadding_unused", (["out"], _P(ctypes.c_uint32), "p")),
+				COMMETHOD([], HRESULT, "GetCurrentPadding", (["out"], _P(ctypes.c_uint32), "p")),
 				COMMETHOD([], HRESULT, "_IsFormatSupported_unused",
 					(["in"], ctypes.c_int, "ShareMode"),
 					(["in"], ctypes.c_void_p, "pFormat"),
@@ -904,11 +918,25 @@ class _LoopbackRecorder(object):
 				),
 			]
 
+		class IAudioRenderClient(comtypes.IUnknown):
+			_iid_ = _LoopbackRecorder.IID_IAudioRenderClient
+			_methods_ = [
+				COMMETHOD([], HRESULT, "GetBuffer",
+					(["in"], ctypes.c_uint32, "NumFramesRequested"),
+					(["out"], _P(_P(ctypes.c_byte)), "ppData"),
+				),
+				COMMETHOD([], HRESULT, "ReleaseBuffer",
+					(["in"], ctypes.c_uint32, "NumFramesWritten"),
+					(["in"], ctypes.c_uint32, "dwFlags"),
+				),
+			]
+
 		_LoopbackRecorder._IMMDevice = IMMDevice
 		_LoopbackRecorder._IMMDeviceCollection = IMMDeviceCollection
 		_LoopbackRecorder._IMMDeviceEnumerator = IMMDeviceEnumerator
 		_LoopbackRecorder._IAudioClient = IAudioClient
 		_LoopbackRecorder._IAudioCaptureClient = IAudioCaptureClient
+		_LoopbackRecorder._IAudioRenderClient = IAudioRenderClient
 
 	def open(self):
 		"""Prepare the loopback client without starting capture yet.
@@ -926,22 +954,77 @@ class _LoopbackRecorder(object):
 		except Exception:
 			pass
 		if self._excludeProcessId:
+			# Probe once: if ActivateAudioInterfaceAsync is not exported by
+			# mmdevapi (Windows older than the process-loopback API, or a
+			# restricted environment), skip retries and go straight to
+			# endpoint loopback. Retrying the same AttributeError three
+			# times only wastes time and log noise.
+			_plApiAvailable = False
 			try:
-				self._openProcessLoopbackExclude(self._excludeProcessId)
-				self.usedProcessLoopback = True
-				log.info(
-					"Cloud Uploader: computer audio using process-loopback "
-					"exclude PID %s" % self._excludeProcessId
+				_mmdev = ctypes.WinDLL("mmdevapi")
+				_plApiAvailable = hasattr(_mmdev, "ActivateAudioInterfaceAsync") and (
+					getattr(_mmdev, "ActivateAudioInterfaceAsync", None) is not None
 				)
-				return
-			except Exception as e:
+			except Exception:
+				_plApiAvailable = False
+			if not _plApiAvailable:
 				log.warning(
-					"Cloud Uploader: process-loopback exclude failed, "
-					"falling back to normal loopback (NVDA audio will be "
-					"included): %s" % e
+					"Cloud Uploader: ActivateAudioInterfaceAsync not available "
+					"on this system - process-loopback exclude is unsupported; "
+					"using normal loopback (NVDA audio will be included)"
 				)
-				self._client = None
-				self._captureClient = None
+				self._processLoopbackMode = False
+				self.usedProcessLoopback = False
+				self._openDeviceLoopback()
+				return
+			# A second ActivateAudioInterfaceAsync call for the same PID,
+			# shortly after a previous recording's process-loopback session
+			# closed, has been observed to fail outright with a generic
+			# "Catastrophic failure" (E_UNEXPECTED) - the Windows audio
+			# engine appears to sometimes need a brief moment to finish
+			# tearing down the previous excluded-loopback session before it
+			# will hand out a new one for the same process. Retry activation
+			# a couple of times with a short, increasing pause before
+			# falling back, instead of giving up on the very first failure.
+			lastError = None
+			for attempt, delay in enumerate((0, 0.3, 0.8)):
+				if delay:
+					time.sleep(delay)
+				try:
+					self._openProcessLoopbackExclude(self._excludeProcessId)
+					self.usedProcessLoopback = True
+					log.info(
+						"Cloud Uploader: computer audio using process-loopback "
+						"exclude PID %s%s" % (
+							self._excludeProcessId,
+							"" if attempt == 0 else " (attempt %d)" % (attempt + 1),
+						)
+					)
+					return
+				except Exception as e:
+					lastError = e
+					log.warning(
+						"Cloud Uploader: process-loopback exclude activation "
+						"attempt %d failed: %s" % (attempt + 1, e)
+					)
+					self._client = None
+					self._captureClient = None
+					# Critical: _openProcessLoopbackExclude sets _processLoopbackMode
+					# True before activation. If activation fails, that flag must be
+					# cleared or startCapture()/poll() will treat this as a live
+					# process-loopback session and never Start() the device client
+					# or drain packets - resulting in a completely silent recording.
+					self._processLoopbackMode = False
+					self.usedProcessLoopback = False
+					self._plThread = None
+			log.warning(
+				"Cloud Uploader: process-loopback exclude failed after %d "
+				"attempts, falling back to normal loopback (NVDA audio "
+				"will be included): %s" % (attempt + 1, lastError)
+			)
+		# Ensure process-loopback mode is fully off before opening device loopback
+		self._processLoopbackMode = False
+		self.usedProcessLoopback = False
 		self._openDeviceLoopback()
 
 	def _openProcessLoopbackExclude(self, processId):
@@ -981,10 +1064,13 @@ class _LoopbackRecorder(object):
 			COINIT_MULTITHREADED = 0x0
 			RPC_E_CHANGED_MODE = -2147417850
 
-			client = None
-			captureClient = None
-			try:
-				ctypes.windll.ole32.CoInitializeEx(None, COINIT_MULTITHREADED)
+			def _activate():
+				"""Runs one full ActivateAudioInterfaceAsync round-trip and returns a
+				freshly-initialized (client, captureClient) pair. Raises on failure.
+				Callable more than once in the same worker thread - used both for the
+				initial activation and, if the stream later turns out to be dead, for
+				a full re-activation rather than just a Stop/Start on a possibly-wedged
+				session."""
 
 				class AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS(ctypes.Structure):
 					_fields_ = [
@@ -1066,7 +1152,8 @@ class _LoopbackRecorder(object):
 				handler = _CompletionHandler()
 				op = ctypes.POINTER(IActivateAudioInterfaceAsyncOperation)()
 
-				Activate = ctypes.windll.Mmdevapi.ActivateAudioInterfaceAsync
+				_mmdevapi = ctypes.WinDLL("mmdevapi")
+				Activate = _mmdevapi.ActivateAudioInterfaceAsync
 				Activate.restype = ctypes.c_long
 				handler_ptr = handler.QueryInterface(IActivateAudioInterfaceCompletionHandler)
 				hr = Activate(
@@ -1096,7 +1183,7 @@ class _LoopbackRecorder(object):
 				if unknown is None or _isNullPtr(unknown):
 					raise Exception("process-loopback returned no interface")
 
-				client = unknown.QueryInterface(recorder._IAudioClient)
+				newClient = unknown.QueryInterface(recorder._IAudioClient)
 
 				class _Wfx(ctypes.Structure):
 					_pack_ = 1
@@ -1124,19 +1211,40 @@ class _LoopbackRecorder(object):
 					| AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
 					| AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
 				)
-				client.Initialize(
+				newClient.Initialize(
 					recorder.AUDCLNT_SHAREMODE_SHARED,
 					flags,
 					3 * 1000 * 1000, 0,
 					ctypes.byref(wfx),
 					None,
 				)
-				capturePtr = client.GetService(ctypes.byref(recorder.IID_IAudioCaptureClient))
+				capturePtr = newClient.GetService(ctypes.byref(recorder.IID_IAudioCaptureClient))
 				if _isNullPtr(capturePtr):
 					raise Exception("process-loopback client did not return a capture client")
-				captureClient = ctypes.cast(
+				newCaptureClient = ctypes.cast(
 					_asVoidPtr(capturePtr), ctypes.POINTER(recorder._IAudioCaptureClient)
 				)
+				return newClient, newCaptureClient
+
+			client = None
+			captureClient = None
+			usedCachedClient = False
+			try:
+				ctypes.windll.ole32.CoInitializeEx(None, COINIT_MULTITHREADED)
+
+				cached = _LoopbackRecorder._processLoopbackCache.get(pid)
+				if cached is not None:
+					client, captureClient = cached
+					usedCachedClient = True
+					log.info(
+						"Cloud Uploader: reusing the process-loopback client "
+						"activated earlier this NVDA session instead of "
+						"re-activating (re-activation is unreliable for a "
+						"second call with the same excluded PID)"
+					)
+				else:
+					client, captureClient = _activate()
+					_LoopbackRecorder._processLoopbackCache[pid] = (client, captureClient)
 
 				# Ready for startCapture
 				recorder._plReadyEvent.set()
@@ -1148,37 +1256,266 @@ class _LoopbackRecorder(object):
 				if recorder._plStopEvent.is_set():
 					return
 
-				client.Start()
+				try:
+					client.Start()
+				except Exception as e:
+					if not usedCachedClient:
+						raise
+					# The cached client from an earlier recording is no longer
+					# usable (device changed, session torn down, etc.) - drop
+					# it and activate fresh rather than failing the recording.
+					log.warning(
+						"Cloud Uploader: cached process-loopback client could "
+						"not Start(), activating fresh instead: %s" % e
+					)
+					_LoopbackRecorder._processLoopbackCache.pop(pid, None)
+					client, captureClient = _activate()
+					_LoopbackRecorder._processLoopbackCache[pid] = (client, captureClient)
+					usedCachedClient = False
+					client.Start()
+
+				# Diagnostic counters only - not used for behavior, just so a
+				# failed/silent recording leaves something in the debug log
+				# instead of nothing, which is otherwise indistinguishable
+				# from "worked fine, nothing else was making sound".
+				audioFrameCount = 0
+				silentFrameCount = 0
+				packetCount = 0
+				captureStartClock = time.perf_counter()
+				totalCaptureStartClock = captureStartClock
+				restartedDeadStream = False
+				reactivatedDeadStream = False
+				fellBackToDevice = False
 
 				# Capture loop: drain packets until stop
 				while not recorder._plStopEvent.is_set():
+					# Watchdog: a process-loopback stream has been observed to report
+					# a successful Start() and then simply never deliver a single
+					# packet - no error, just silence forever. Two escalating
+					# recovery attempts, each tried once per recording so a
+					# recording that's genuinely just quiet isn't endlessly restarted:
+					#  1. Stop/Start the existing stream (cheap, handles a stream
+					#     that just needs a kick).
+					#  2. If that didn't get packets flowing either, do a full
+					#     re-activation - a fresh ActivateAudioInterfaceAsync call,
+					#     not just Stop/Start on what may be a wedged session. This
+					#     is the stronger fix for the "works the first time, not the
+					#     second" pattern, where leftover state from a previous
+					#     recording's session seems to be the more likely culprit.
+					if (
+						not restartedDeadStream
+						and packetCount == 0
+						and (time.perf_counter() - captureStartClock) > 1.5
+					):
+						restartedDeadStream = True
+						log.warning(
+							"Cloud Uploader: process-loopback stream delivered no "
+							"packets in 1.5s, restarting the stream once"
+						)
+						try:
+							client.Stop()
+							client.Start()
+							captureStartClock = time.perf_counter()
+						except Exception as e:
+							log.error("Cloud Uploader: could not restart the dead process-loopback stream: %s" % e)
+					elif (
+						restartedDeadStream
+						and not reactivatedDeadStream
+						and packetCount == 0
+						and (time.perf_counter() - captureStartClock) > 1.5
+					):
+						reactivatedDeadStream = True
+						log.warning(
+							"Cloud Uploader: restarting the stream didn't help either, "
+							"trying a full re-activation"
+						)
+						try:
+							try:
+								client.Stop()
+							except Exception:
+								pass
+							newClient, newCaptureClient = _activate()
+							client, captureClient = newClient, newCaptureClient
+							_LoopbackRecorder._processLoopbackCache[pid] = (client, captureClient)
+							client.Start()
+							captureStartClock = time.perf_counter()
+							log.info("Cloud Uploader: process-loopback re-activation succeeded")
+						except Exception as e:
+							log.error("Cloud Uploader: process-loopback re-activation failed, giving up on recovery: %s" % e)
+					elif (
+						reactivatedDeadStream
+						and not fellBackToDevice
+						and packetCount == 0
+						and (time.perf_counter() - captureStartClock) > 1.5
+					):
+						# Process-loopback activated cleanly but never delivered
+						# packets even after Stop/Start and full re-activation.
+						# Fall back to ordinary endpoint loopback so the recording
+						# still captures system audio (including NVDA) instead of
+						# finishing as silence. Keep using this same worker thread
+						# so chunks continue to land in the same buffer.
+						fellBackToDevice = True
+						log.warning(
+							"Cloud Uploader: process-loopback still delivered no packets "
+							"after recovery - falling back to normal endpoint loopback "
+							"(NVDA audio will be included) so recording can continue"
+						)
+						try:
+							try:
+								client.Stop()
+							except Exception:
+								pass
+							# Drop the broken PL client from the session cache so a
+							# future recording gets a fresh activation attempt.
+							_LoopbackRecorder._processLoopbackCache.pop(pid, None)
+							client = None
+							captureClient = None
+
+							enumerator = comtypes.CoCreateInstance(
+								recorder.CLSID_MMDeviceEnumerator,
+								interface=recorder._IMMDeviceEnumerator,
+								clsctx=comtypes.CLSCTX_ALL,
+							)
+							if _isNullPtr(enumerator):
+								raise Exception("Could not create the audio device enumerator for fallback")
+							eRender, eConsole = 0, 0
+							device = None
+							if recorder._deviceId:
+								try:
+									device = enumerator.GetDevice(recorder._deviceId)
+									if _isNullPtr(device):
+										device = None
+								except Exception as e:
+									log.error(
+										"Cloud Uploader: chosen playback device unavailable "
+										"during process-loopback fallback: %s" % e
+									)
+							if device is None:
+								device = enumerator.GetDefaultAudioEndpoint(eRender, eConsole)
+								recorder.usedFallbackDevice = bool(recorder._deviceId)
+							if _isNullPtr(device):
+								raise Exception("No playback device is available for computer audio fallback")
+							clientPtr = device.Activate(
+								ctypes.byref(recorder.IID_IAudioClient),
+								comtypes.CLSCTX_ALL,
+								None,
+							)
+							if _isNullPtr(clientPtr):
+								raise Exception("The playback device did not return an audio client for fallback")
+							client = ctypes.cast(
+								_asVoidPtr(clientPtr), ctypes.POINTER(recorder._IAudioClient)
+							)
+							fmtPtr = client.GetMixFormat()
+							if _isNullPtr(fmtPtr):
+								raise Exception("The playback device did not return a mix format for fallback")
+							fmt = ctypes.cast(
+								_asVoidPtr(fmtPtr), ctypes.POINTER(_WAVEFORMATEX_FULL)
+							).contents
+							recorder._srcChannels = fmt.nChannels
+							recorder.samplerate = fmt.nSamplesPerSec
+							recorder._srcSampwidth = fmt.wBitsPerSample // 8
+							if fmt.wFormatTag == 3:
+								recorder._srcIsFloat = True
+							elif fmt.wFormatTag == 0xFFFE:
+								ext = ctypes.cast(
+									_asVoidPtr(fmtPtr),
+									ctypes.POINTER(_WAVEFORMATEXTENSIBLE_FULL),
+								).contents
+								recorder._srcIsFloat = ext.subFormatTag == 3
+							else:
+								recorder._srcIsFloat = False
+							hnsBuffer = 3 * 1000 * 1000  # ~300ms
+							try:
+								client.Initialize(
+									recorder.AUDCLNT_SHAREMODE_SHARED,
+									recorder.AUDCLNT_STREAMFLAGS_LOOPBACK,
+									hnsBuffer, 0, fmtPtr, None,
+								)
+							finally:
+								try:
+									ctypes.windll.ole32.CoTaskMemFree(_asVoidPtr(fmtPtr))
+								except Exception:
+									pass
+							capturePtr = client.GetService(
+								ctypes.byref(recorder.IID_IAudioCaptureClient)
+							)
+							if _isNullPtr(capturePtr):
+								raise Exception("Fallback audio client did not return a capture client")
+							captureClient = ctypes.cast(
+								_asVoidPtr(capturePtr),
+								ctypes.POINTER(recorder._IAudioCaptureClient),
+							)
+							client.Start()
+							# Mark that exclusion is no longer in effect so callers
+							# do not treat a successful capture as an excluded one,
+							# and so the "empty process-loopback" warning is not shown.
+							recorder.usedProcessLoopback = False
+							recorder._fellBackFromProcessLoopback = True
+							captureStartClock = time.perf_counter()
+							log.info(
+								"Cloud Uploader: endpoint-loopback fallback active "
+								"(NVDA audio will be included)"
+							)
+						except Exception as e:
+							log.error(
+								"Cloud Uploader: could not fall back to endpoint loopback "
+								"after dead process-loopback: %s" % e
+							)
+							# Leave client/captureClient as None; the drain loop will
+							# just sleep until stop. Recording will end empty.
+							client = None
+							captureClient = None
 					try:
+						if captureClient is None:
+							time.sleep(0.05)
+							continue
 						drained = False
 						while True:
 							packetFrames = _asInt(captureClient.GetNextPacketSize())
 							if packetFrames == 0:
 								break
 							drained = True
+							packetCount += 1
 							dataPtr, numFrames, flags, devPos, qpcPos = captureClient.GetBuffer()
 							numFrames = _asInt(numFrames)
 							flagsVal = _asInt(flags)
-							frameBytes = 2 * 4  # float32 stereo
+							frameBytes = recorder._srcChannels * recorder._srcSampwidth
 							byteLen = numFrames * frameBytes
 							if numFrames and not (flagsVal & recorder.AUDCLNT_BUFFERFLAGS_SILENT) and not _isNullPtr(dataPtr):
 								raw = ctypes.string_at(_asVoidPtr(dataPtr), byteLen)
 								converted = recorder._convertChunk(raw)
 								with recorder._plLock:
 									recorder._chunks.append(converted)
+								audioFrameCount += numFrames
 							elif numFrames:
 								outFrameBytes = recorder.OUT_CHANNELS * recorder.OUT_SAMPWIDTH
 								with recorder._plLock:
 									recorder._chunks.append(b"\x00" * (numFrames * outFrameBytes))
+								silentFrameCount += numFrames
 							captureClient.ReleaseBuffer(numFrames)
 						if not drained:
 							time.sleep(0.01)
 					except Exception as e:
 						log.error("Cloud Uploader: process-loopback capture glitch: %s" % e)
 						time.sleep(0.05)
+
+				captureDuration = time.perf_counter() - totalCaptureStartClock
+				log.info(
+					"Cloud Uploader: process-loopback capture ended after %.1fs - "
+					"%d packets, %d frames with real audio, %d frames flagged "
+					"silent by Windows, stream restart used: %s, re-activation used: %s, "
+					"endpoint fallback used: %s"
+					% (
+						captureDuration, packetCount, audioFrameCount, silentFrameCount,
+						restartedDeadStream, reactivatedDeadStream, fellBackToDevice,
+					)
+				)
+				if packetCount == 0 and not fellBackToDevice:
+					log.warning(
+						"Cloud Uploader: process-loopback capture never received a single "
+						"packet from Windows even after recovery attempts - the virtual "
+						"capture device did not deliver audio for this recording"
+					)
 
 				try:
 					client.Stop()
@@ -1193,7 +1530,7 @@ class _LoopbackRecorder(object):
 						dataPtr, numFrames, flags, devPos, qpcPos = captureClient.GetBuffer()
 						numFrames = _asInt(numFrames)
 						flagsVal = _asInt(flags)
-						frameBytes = 2 * 4
+						frameBytes = recorder._srcChannels * recorder._srcSampwidth
 						byteLen = numFrames * frameBytes
 						if numFrames and not (flagsVal & recorder.AUDCLNT_BUFFERFLAGS_SILENT) and not _isNullPtr(dataPtr):
 							raw = ctypes.string_at(_asVoidPtr(dataPtr), byteLen)
@@ -1213,6 +1550,7 @@ class _LoopbackRecorder(object):
 			finally:
 				client = None
 				captureClient = None
+
 
 		self._plThread = threading.Thread(
 			target=_worker, name="CloudUploaderProcessLoopback", daemon=True
@@ -3382,6 +3720,15 @@ class _StreamingPreviewPlayer(object):
 		self._frameBytes = 4
 		self._playing = False
 		self._length = 0
+		# WASAPI fallback (see start()): used when the legacy winmm waveOut
+		# API won't open any device at all (observed on some Windows 7
+		# systems, where it returns no usable MMRESULT for any device ID).
+		self._usingWasapi = False
+		self._wasapiEnumerator = None
+		self._wasapiDevice = None
+		self._wasapiClient = None
+		self._wasapiRenderClient = None
+		self._wasapiBufferFrames = 0
 
 	@property
 	def isPlaying(self):
@@ -3441,12 +3788,50 @@ class _StreamingPreviewPlayer(object):
 		fmt.nAvgBytesPerSec = self._rate * 4
 		fmt.cbSize = 0
 		handle = ctypes.c_void_p()
-		result = _winmm.waveOutOpen(
-			ctypes.byref(handle), WAVE_MAPPER, ctypes.byref(fmt),
-			None, None, CALLBACK_NULL,
-		)
+		# WAVE_MAPPER (let Windows pick the default device) has been seen to
+		# fail outright on some systems (reported on Windows 7) while opening
+		# the first real device explicitly (device ID 0) works fine. Try
+		# WAVE_MAPPER first since it respects the user's chosen default
+		# device, then fall back to device 0 rather than giving up.
+		result = None
+		for deviceId in (WAVE_MAPPER, 0):
+			try:
+				result = _winmm.waveOutOpen(
+					ctypes.byref(handle), deviceId, ctypes.byref(fmt),
+					None, None, CALLBACK_NULL,
+				)
+			except Exception as e:
+				log.warning(
+					"Cloud Uploader: waveOutOpen raised for device %s: %s" % (deviceId, e)
+				)
+				result = None
+			if result == MMSYSERR_NOERROR:
+				break
+			log.warning(
+				"Cloud Uploader: waveOutOpen failed for device %s (result=%r), "
+				% (deviceId, result)
+				+ ("trying device 0 next" if deviceId == WAVE_MAPPER else "no more devices to try")
+			)
 		if result != MMSYSERR_NOERROR:
-			raise Exception(_("Could not open the audio playback device (error {code})").format(code=result))
+			# winmm's waveOut API won't open any device on this system at all
+			# (seen on Windows 7, returning no usable MMRESULT for either
+			# WAVE_MAPPER or device 0, with no exception either - the legacy
+			# multimedia layer itself seems to be the problem, not a specific
+			# device). Try playback through WASAPI instead, which is a
+			# completely separate audio stack from winmm and already used
+			# elsewhere in this add-on for computer-audio recording.
+			try:
+				self._startWasapi()
+				return
+			except Exception as wasapiError:
+				log.warning(
+					"Cloud Uploader: WASAPI playback fallback also failed: %s" % wasapiError
+				)
+			raise Exception(
+				_("Could not open the audio playback device (error {code})").format(
+					code=result if result is not None else _("device unavailable")
+				)
+			)
 		self._handle = handle
 		bufBytes = max(self._frameBytes, int(self._rate * self.BUFFER_MS / 1000.0) * self._frameBytes)
 		self._headers = []
@@ -3463,8 +3848,114 @@ class _StreamingPreviewPlayer(object):
 		for header, buf in zip(self._headers, self._buffers):
 			self._fillAndWrite(header, buf)
 
+	def _startWasapi(self):
+		"""Open the default playback device through WASAPI (same low-level
+		path already used for computer-audio recording) instead of winmm.
+		AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM lets the audio engine itself
+		handle converting our fixed 16-bit/self._rate PCM to whatever
+		format the device actually wants, so no resampling is needed here."""
+		if comtypes is None:
+			raise Exception("comtypes is unavailable")
+		dummy = _LoopbackRecorder()
+		dummy._buildInterfaces()
+		try:
+			comtypes.CoInitialize()
+		except Exception:
+			pass
+		enumerator = comtypes.CoCreateInstance(
+			_LoopbackRecorder.CLSID_MMDeviceEnumerator,
+			interface=_LoopbackRecorder._IMMDeviceEnumerator,
+			clsctx=comtypes.CLSCTX_ALL,
+		)
+		if _isNullPtr(enumerator):
+			raise Exception("Could not create the audio device enumerator")
+		device = enumerator.GetDefaultAudioEndpoint(0, 0)  # eRender, eConsole
+		if _isNullPtr(device):
+			raise Exception("No default playback device is available")
+		clientPtr = device.Activate(
+			ctypes.byref(_LoopbackRecorder.IID_IAudioClient), comtypes.CLSCTX_ALL, None
+		)
+		if _isNullPtr(clientPtr):
+			raise Exception("The playback device did not return an audio client")
+		client = ctypes.cast(_asVoidPtr(clientPtr), ctypes.POINTER(_LoopbackRecorder._IAudioClient))
+
+		fmt = WAVEFORMATEX()
+		fmt.wFormatTag = WAVE_FORMAT_PCM
+		fmt.nChannels = 2
+		fmt.nSamplesPerSec = self._rate
+		fmt.wBitsPerSample = 16
+		fmt.nBlockAlign = 4
+		fmt.nAvgBytesPerSec = self._rate * 4
+		fmt.cbSize = 0
+		flags = (
+			_LoopbackRecorder.AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
+			| _LoopbackRecorder.AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
+		)
+		client.Initialize(
+			_LoopbackRecorder.AUDCLNT_SHAREMODE_SHARED,
+			flags,
+			3 * 1000 * 1000, 0,
+			ctypes.byref(fmt), None,
+		)
+		bufferFrameCount = _asInt(client.GetBufferSize())
+		if bufferFrameCount <= 0:
+			raise Exception("The playback device reported an empty buffer")
+		renderPtr = client.GetService(ctypes.byref(_LoopbackRecorder.IID_IAudioRenderClient))
+		if _isNullPtr(renderPtr):
+			raise Exception("The audio client did not return a render client")
+		renderClient = ctypes.cast(
+			_asVoidPtr(renderPtr), ctypes.POINTER(_LoopbackRecorder._IAudioRenderClient)
+		)
+
+		self._wasapiEnumerator = enumerator
+		self._wasapiDevice = device
+		self._wasapiClient = client
+		self._wasapiRenderClient = renderClient
+		self._wasapiBufferFrames = bufferFrameCount
+		self._usingWasapi = True
+
+		# Pre-fill the whole buffer before Start() so playback doesn't open
+		# on silence.
+		chunk = self._renderChunk(bufferFrameCount * self._frameBytes)
+		if chunk:
+			numFrames = len(chunk) // self._frameBytes
+			dataPtr = renderClient.GetBuffer(numFrames)
+			if not _isNullPtr(dataPtr):
+				ctypes.memmove(_asVoidPtr(dataPtr), chunk, len(chunk))
+				renderClient.ReleaseBuffer(numFrames, 0)
+		client.Start()
+		self._playing = True
+		log.info(
+			"Cloud Uploader: preview playing via WASAPI fallback "
+			"(winmm waveOut was unavailable on this system)"
+		)
+
+	def _pollWasapi(self):
+		if not self._usingWasapi or self._wasapiClient is None:
+			return
+		padding = _asInt(self._wasapiClient.GetCurrentPadding())
+		framesAvailable = self._wasapiBufferFrames - padding
+		if framesAvailable <= 0:
+			return
+		chunk = self._renderChunk(framesAvailable * self._frameBytes)
+		if not chunk:
+			if padding == 0:
+				self.stop()
+			return
+		numFrames = len(chunk) // self._frameBytes
+		dataPtr = self._wasapiRenderClient.GetBuffer(numFrames)
+		if _isNullPtr(dataPtr):
+			return
+		ctypes.memmove(_asVoidPtr(dataPtr), chunk, len(chunk))
+		self._wasapiRenderClient.ReleaseBuffer(numFrames, 0)
+
 	def poll(self):
-		if not self._playing or self._handle is None:
+		if not self._playing:
+			return
+		if self._usingWasapi:
+			self._pollWasapi()
+			return
+		if self._handle is None:
 			return
 		for header, buf in zip(self._headers, self._buffers):
 			if header.dwFlags & self.WHDR_DONE:
@@ -3554,6 +4045,18 @@ class _StreamingPreviewPlayer(object):
 
 	def stop(self):
 		self._playing = False
+		if self._usingWasapi:
+			try:
+				if self._wasapiClient is not None:
+					self._wasapiClient.Stop()
+			except Exception:
+				pass
+			self._wasapiClient = None
+			self._wasapiRenderClient = None
+			self._wasapiDevice = None
+			self._wasapiEnumerator = None
+			self._usingWasapi = False
+			return
 		if self._handle is None:
 			return
 		try:
@@ -3980,14 +4483,23 @@ class RecordVoiceDialog(wx.Dialog):
 		sysRecorder = None
 		usedFallbackMicDevice = False
 		usedFallbackSystemDevice = False
-		# Open (prepare) both devices first, then start capture on both as
-		# close together as possible so dual-source tracks stay in sync.
-		try:
-			if sourceKey in ("mic", "both"):
+		micOpenError = None
+		sysOpenError = None
+		# Open each requested device on its own, so that in "both" mode one
+		# device failing doesn't take the other down with it - previously
+		# any single failure here aborted the whole recording even when the
+		# other device was perfectly fine to use.
+		if sourceKey in ("mic", "both"):
+			try:
 				micRecorder = _WaveInRecorder(deviceId=deviceId, preferMono=preferMono)
 				micRecorder.open()
 				usedFallbackMicDevice = micRecorder.usedFallbackDevice
-			if sourceKey in ("computer", "both"):
+			except Exception as e:
+				log.error("Cloud Uploader: could not open microphone: %s" % e)
+				micOpenError = e
+				micRecorder = None
+		if sourceKey in ("computer", "both"):
+			try:
 				excludePid = None
 				if bool(self.excludeNVDACheckbox.GetValue()):
 					excludePid = os.getpid()
@@ -3996,24 +4508,39 @@ class RecordVoiceDialog(wx.Dialog):
 				)
 				sysRecorder.open()
 				usedFallbackSystemDevice = sysRecorder.usedFallbackDevice
-		except Exception as e:
-			log.error("Cloud Uploader: could not open recording device: %s" % e)
-			for rec in (micRecorder, sysRecorder):
-				if rec is not None:
-					try:
-						rec.abort()
-					except Exception:
-						pass
+			except Exception as e:
+				log.error("Cloud Uploader: could not open computer audio device: %s" % e)
+				sysOpenError = e
+				sysRecorder = None
+
+		if sourceKey == "both" and (micRecorder is None or sysRecorder is None) and (micRecorder is not None or sysRecorder is not None):
+			# Only one side failed to open - record with the other instead
+			# of failing the whole recording.
+			sourceKey = "mic" if micRecorder is not None else "computer"
+			failedWhat = _("the microphone") if micRecorder is None else _("computer audio")
+			ui.message(_("Could not open {device}, recording the other source only").format(device=failedWhat))
+		elif sourceKey == "mic" and micRecorder is None:
 			gui.messageBox(
-				_("Could not start recording: {error}").format(error=e),
-				_("Recording error"),
-				wx.OK | wx.ICON_ERROR,
-				self,
+				_("Could not start recording: {error}").format(error=micOpenError),
+				_("Recording error"), wx.OK | wx.ICON_ERROR, self,
 			)
 			return
+		elif sourceKey == "computer" and sysRecorder is None:
+			gui.messageBox(
+				_("Could not start recording: {error}").format(error=sysOpenError),
+				_("Recording error"), wx.OK | wx.ICON_ERROR, self,
+			)
+			return
+		elif sourceKey == "both" and micRecorder is None and sysRecorder is None:
+			gui.messageBox(
+				_("Could not start recording: {error}").format(error=micOpenError or sysOpenError),
+				_("Recording error"), wx.OK | wx.ICON_ERROR, self,
+			)
+			return
+
 		sysStartClock = None
 		micStartClock = None
-		startErrors = []
+		startErrors = {}
 		try:
 			if sysRecorder is not None and micRecorder is not None:
 				# Calling startCapture() one after another means the second
@@ -4032,7 +4559,7 @@ class RecordVoiceDialog(wx.Dialog):
 						barrier.wait()
 						sysRecorder.startCapture()
 					except Exception as e:
-						startErrors.append(e)
+						startErrors["sys"] = e
 					finally:
 						nonlocal sysStartClock
 						sysStartClock = time.perf_counter()
@@ -4042,7 +4569,7 @@ class RecordVoiceDialog(wx.Dialog):
 						barrier.wait()
 						micRecorder.startCapture()
 					except Exception as e:
-						startErrors.append(e)
+						startErrors["mic"] = e
 					finally:
 						nonlocal micStartClock
 						micStartClock = time.perf_counter()
@@ -4053,8 +4580,26 @@ class RecordVoiceDialog(wx.Dialog):
 				micThread.start()
 				sysThread.join()
 				micThread.join()
-				if startErrors:
-					raise startErrors[0]
+				if "mic" in startErrors and "sys" in startErrors:
+					raise startErrors["mic"]
+				if "mic" in startErrors:
+					log.error("Cloud Uploader: could not start microphone capture: %s" % startErrors["mic"])
+					try:
+						micRecorder.abort()
+					except Exception:
+						pass
+					micRecorder = None
+					sourceKey = "computer"
+					ui.message(_("Could not start the microphone, recording computer audio only"))
+				elif "sys" in startErrors:
+					log.error("Cloud Uploader: could not start computer audio capture: %s" % startErrors["sys"])
+					try:
+						sysRecorder.abort()
+					except Exception:
+						pass
+					sysRecorder = None
+					sourceKey = "mic"
+					ui.message(_("Could not start computer audio, recording the microphone only"))
 			elif sysRecorder is not None:
 				sysRecorder.startCapture()
 				sysStartClock = time.perf_counter()
@@ -4184,6 +4729,29 @@ class RecordVoiceDialog(wx.Dialog):
 				self,
 			)
 			return
+		sysUsedProcessLoopback = bool(self._sysRecorder and getattr(self._sysRecorder, "usedProcessLoopback", False))
+		sysFellBackFromProcessLoopback = bool(
+			self._sysRecorder and getattr(self._sysRecorder, "_fellBackFromProcessLoopback", False)
+		)
+		if sysUsedProcessLoopback and not sysRaw:
+			# The exclusion activated fine (no error was raised), but the
+			# stream never actually delivered any audio - tell the user
+			# plainly instead of handing them a silently empty recording.
+			log.warning("Cloud Uploader: process-loopback recording ended with no computer audio captured")
+			ui.message(_(
+				"Warning: no computer audio was captured, even though NVDA exclusion was on. "
+				"That part of the recording may be silent - check the debug log for details."
+			))
+		elif sysFellBackFromProcessLoopback:
+			# The exclusion stream went dead partway through and this
+			# recording switched to ordinary loopback to avoid coming back
+			# empty - the computer audio is real, but NVDA's own speech is
+			# in it for whatever part used the fallback.
+			log.warning("Cloud Uploader: this recording fell back to normal loopback mid-way (NVDA audio included)")
+			ui.message(_(
+				"Note: NVDA exclusion stopped working partway through this recording, "
+				"so NVDA's own speech may be included in the computer audio."
+			))
 		self._recording = False
 		self._micRecorder = None
 		self._sysRecorder = None
@@ -5754,6 +6322,22 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._bgProcessing = False
 			ui.message(_("Could not save the recording: {error}").format(error=e))
 			return
+		sysUsedProcessLoopback = bool(self._bgSysRecorder and getattr(self._bgSysRecorder, "usedProcessLoopback", False))
+		sysFellBackFromProcessLoopback = bool(
+			self._bgSysRecorder and getattr(self._bgSysRecorder, "_fellBackFromProcessLoopback", False)
+		)
+		if sysUsedProcessLoopback and not sysRaw:
+			log.warning("Cloud Uploader: process-loopback background recording ended with no computer audio captured")
+			ui.message(_(
+				"Warning: no computer audio was captured, even though NVDA exclusion was on. "
+				"That part of the recording may be silent - check the debug log for details."
+			))
+		elif sysFellBackFromProcessLoopback:
+			log.warning("Cloud Uploader: this background recording fell back to normal loopback mid-way (NVDA audio included)")
+			ui.message(_(
+				"Note: NVDA exclusion stopped working partway through this recording, "
+				"so NVDA's own speech may be included in the computer audio."
+			))
 		self._bgMicRecorder = None
 		self._bgSysRecorder = None
 		args = (
